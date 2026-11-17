@@ -34,6 +34,15 @@
   #aviso { display:none; background:#2a2416; color:#f5d68a; border-radius:12px; padding:12px; font-size:14px; gap:10px; }
   #aviso.ver { display:grid; }
   #aviso button { min-height:44px; background:#3a3220; color:#f5d68a; }
+  #texto { width:100%; min-height:52px; border-radius:14px; border:1px solid #3a3f4b; background:#1e2128;
+           color:var(--txt); font:inherit; padding:0 14px; -webkit-user-select:text; user-select:text; }
+  #texto:focus { outline:2px solid var(--acc); border-color:transparent; }
+  .acc { background:var(--acc); }
+  .nota { font-size:12px; color:var(--sub); margin-top:8px; }
+  .nota b { color:var(--txt); }
+  #progreso:empty { display:none; }
+  #teclado .fila button { font-size:14px; }
+  button:disabled { opacity:.45; }
   footer { font-size:11px; color:var(--sub); text-align:center; padding-bottom:8px; }
 </style>
 </head>
@@ -78,6 +87,18 @@
     <button data-k="KEY_FORWARDS">⏩</button>
   </div>
 
+  <section id="teclado">
+    <div class="titulo">⌨ Escribir en YouTube</div>
+    <input id="texto" type="text" placeholder="Qué quieres buscar…" autocomplete="off" enterkeyhint="search">
+    <div class="fila" style="margin-top:8px">
+      <button id="btnEscribir">Escribir</button>
+      <button id="btnEscribirBuscar" class="acc">Escribir y buscar</button>
+      <button id="btnSoloBuscar">Buscar</button>
+    </div>
+    <div id="progreso" class="nota"></div>
+    <div class="nota">Abre la búsqueda (🔍) de YouTube y deja el cursor en la <b>A</b>. Escribe letras, ñ y espacios (sin números por ahora).</div>
+  </section>
+
   <section>
     <div class="titulo">Entrada</div>
     <div id="fuentes"></div>
@@ -114,6 +135,21 @@ document.querySelectorAll('[data-k]').forEach(b => {
 document.getElementById('btnEncender').addEventListener('click', () => { vibrar(); tv.encender(); });
 document.getElementById('btnBuscar').addEventListener('click', () => { vibrar(); tv.buscar(); refrescar(); });
 
+const campo = document.getElementById('texto');
+const escribir = (buscar) => {
+  const t = campo.value.trim();
+  if (!t && !buscar) return;
+  vibrar(); campo.blur();
+  if (t) tv.escribir(t, buscar); else tv.soloBuscar();
+  campo.value = '';
+  refrescar();
+};
+document.getElementById('btnEscribir').addEventListener('click', () => escribir(false));
+document.getElementById('btnEscribirBuscar').addEventListener('click', () => escribir(true));
+document.getElementById('btnSoloBuscar').addEventListener('click', () => { vibrar(); tv.soloBuscar(); refrescar(); });
+campo.addEventListener('keydown', e => { if (e.key === 'Enter') escribir(true); });
+document.getElementById('progreso').addEventListener('click', () => tv.detenerEscritura());
+
 let fuentesPintadas = '';
 function refrescar() {
   let s;
@@ -126,6 +162,11 @@ function refrescar() {
   document.getElementById('avisoTxt').textContent = s.mensaje || 'TV apagada o sin red';
   document.getElementById('btnBuscar').disabled = s.buscando;
   document.getElementById('pie').textContent = 'TV: ' + s.ip;
+  const prog = document.getElementById('progreso');
+  prog.innerHTML = s.escribiendo
+    ? 'Escribiendo en la TV… ' + Math.round(100 * s.escritoHecho / Math.max(1, s.escritoTotal)) + '% · <b>tocar para detener</b>'
+    : '';
+  ['btnEscribir', 'btnEscribirBuscar', 'btnSoloBuscar'].forEach(id => document.getElementById(id).disabled = s.escribiendo);
 
   const clave = JSON.stringify(s.fuentes) + s.fuente;
   if (clave !== fuentesPintadas) {

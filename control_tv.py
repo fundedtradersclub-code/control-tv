@@ -8,8 +8,10 @@ import json, socket, threading, time
 from http.server import ThreadingHTTPServer, BaseHTTPRequestHandler
 from pathlib import Path
 import paho.mqtt.client as mqtt
+from teclado_youtube import Teclado
 
 PUERTO_WEB = 8765
+PAUSA_TECLA = 0.5   # segundos entre pulsaciones al escribir
 CONFIG = Path(__file__).parent / "config.json"   # local, no se sube a git
 
 
@@ -129,6 +131,34 @@ def enviar_tecla(tecla):
         return cliente.publish(T_KEY, tecla).rc == 0
 
 
+teclado = Teclado()
+escritura = {"activa": False, "hecho": 0, "total": 0, "detener": False}
+
+
+def escribir_en_tv(texto, con_buscar):
+    if escritura["activa"]:
+        return False
+    seq = teclado.escribir(texto) + (teclado.buscar() if con_buscar else [])
+    if not seq:
+        return False
+    escritura.update(activa=True, hecho=0, total=len(seq), detener=False)
+
+    def trabajo():
+        try:
+            for k in seq:
+                if escritura["detener"]:
+                    teclado.reiniciar()   # se detuvo a medias: la posicion ya no es segura
+                    break
+                enviar_tecla(k)
+                escritura["hecho"] += 1
+                time.sleep(PAUSA_TECLA)
+        finally:
+            escritura["activa"] = False
+
+    threading.Thread(target=trabajo, daemon=True).start()
+    return True
+
+
 def cambiar_fuente(sid):
     return cliente.publish(T_SRC, json.dumps({"sourceid": sid})).rc == 0
 
@@ -159,7 +189,8 @@ class Handler(BaseHTTPRequestHandler):
 
     def do_GET(self):
         if self.path == "/estado":
-            return self._json(estado)
+            return self._json({**estado, "escribiendo": escritura["activa"],
+                               "escritoHecho": escritura["hecho"], "escritoTotal": escritura["total"]})
         body = PAGINA.encode()
         self.send_response(200)
         self.send_header("Content-Type", "text/html; charset=utf-8")
@@ -174,7 +205,14 @@ class Handler(BaseHTTPRequestHandler):
         except ValueError:
             return self._json({"ok": False}, 400)
         if self.path == "/tecla" and str(datos.get("tecla", "")).startswith("KEY_"):
+            teclado.reiniciar()  # el cursor se movio a mano: volver a suponer la A
             return self._json({"ok": enviar_tecla(datos["tecla"])})
+        if self.path == "/escribir":
+            texto = str(datos.get("texto", ""))[:200]
+            return self._json({"ok": escribir_en_tv(texto, bool(datos.get("buscar")))})
+        if self.path == "/detener":
+            escritura["detener"] = True
+            return self._json({"ok": True})
         if self.path == "/fuente" and datos.get("id"):
             return self._json({"ok": cambiar_fuente(str(datos["id"]))})
         if self.path == "/encender":

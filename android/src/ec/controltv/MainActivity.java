@@ -21,7 +21,9 @@ import java.net.InetSocketAddress;
 import java.net.InterfaceAddress;
 import java.net.NetworkInterface;
 import java.net.Socket;
+import java.util.ArrayList;
 import java.util.Collections;
+import java.util.List;
 import java.util.concurrent.ExecutorService;
 import java.util.concurrent.Executors;
 import java.util.concurrent.TimeUnit;
@@ -47,6 +49,41 @@ public class MainActivity extends Activity implements MqttTv.Listener {
     private volatile String fuentesJson = "[]";
     private volatile String mensaje = "Conectando…";
     private volatile boolean buscando = false;
+
+    // Teclado: escribe moviendo el cursor por el teclado en pantalla de YouTube
+    private static final int PAUSA_TECLA_MS = 500;
+    private final TecladoYouTube teclado = new TecladoYouTube();
+    private volatile Thread escritor;
+    private volatile int escritoHecho = 0, escritoTotal = 0;
+
+    private synchronized void escribirEnTv(String texto, boolean conBuscar) {
+        if (escritor != null) return;
+        final List<String> seq = new ArrayList<>(teclado.escribir(texto));
+        if (conBuscar) seq.addAll(teclado.buscar());
+        if (seq.isEmpty()) return;
+        escritoHecho = 0;
+        escritoTotal = seq.size();
+        Thread t = new Thread(() -> {
+            try {
+                for (String k : seq) {
+                    if (Thread.currentThread().isInterrupted()) { teclado.reiniciar(); break; }
+                    hilo.submit(() -> {
+                        if (asegurarConexion()) {
+                            try { mqtt.publicar(tKey, k); } catch (IOException ignored) { }
+                        }
+                    }).get();
+                    escritoHecho++;
+                    Thread.sleep(PAUSA_TECLA_MS);
+                }
+            } catch (Exception ignored) {
+                teclado.reiniciar();  // se detuvo a medias: la posicion ya no es segura
+            } finally {
+                escritor = null;
+            }
+        }, "escritor");
+        escritor = t;
+        t.start();
+    }
 
     @Override
     protected void onCreate(Bundle b) {
@@ -248,7 +285,27 @@ public class MainActivity extends Activity implements MqttTv.Listener {
     private class Puente {
         @JavascriptInterface
         public void tecla(String k) {
-            if (k != null && k.startsWith("KEY_")) enviar(tKey, k);
+            if (k != null && k.startsWith("KEY_")) {
+                // el cursor se movio a mano: para el teclado, volver a suponer la A
+                teclado.reiniciar();
+                enviar(tKey, k);
+            }
+        }
+
+        @JavascriptInterface
+        public void escribir(String texto, boolean conBuscar) {
+            if (texto != null) escribirEnTv(texto, conBuscar);
+        }
+
+        @JavascriptInterface
+        public void soloBuscar() {
+            escribirEnTv("", true);
+        }
+
+        @JavascriptInterface
+        public void detenerEscritura() {
+            Thread t = escritor;
+            if (t != null) t.interrupt();
         }
 
         @JavascriptInterface
@@ -284,6 +341,9 @@ public class MainActivity extends Activity implements MqttTv.Listener {
                         .put("mensaje", mensaje)
                         .put("buscando", buscando)
                         .put("ip", ip())
+                        .put("escribiendo", escritor != null)
+                        .put("escritoHecho", escritoHecho)
+                        .put("escritoTotal", escritoTotal)
                         .toString();
             } catch (JSONException e) {
                 return "{}";

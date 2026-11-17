@@ -31,6 +31,15 @@
   #fuentes { display:flex; flex-wrap:wrap; gap:8px; }
   #fuentes button { flex:1 1 30%; min-height:44px; font-size:14px; }
   #fuentes button.activa { background:var(--acc); }
+  #texto { width:100%; min-height:52px; border-radius:14px; border:1px solid #3a3f4b; background:#1e2128;
+           color:var(--txt); font:inherit; padding:0 14px; }
+  #texto:focus { outline:2px solid var(--acc); border-color:transparent; }
+  .nota { font-size:12px; color:var(--sub); margin-top:8px; }
+  .nota b { color:var(--txt); }
+  #progreso:empty { display:none; }
+  #progreso { cursor:pointer; }
+  #teclado .fila button { font-size:14px; }
+  button:disabled { opacity:.45; }
 </style>
 </head>
 <body>
@@ -69,6 +78,18 @@
     <button data-k="KEY_FORWARDS">⏩</button>
   </div>
 
+  <section id="teclado">
+    <div style="font-size:12px;color:var(--sub);margin-bottom:8px">⌨ Escribir en YouTube</div>
+    <input id="texto" type="text" placeholder="Qué quieres buscar…" autocomplete="off" enterkeyhint="search">
+    <div class="fila" style="margin-top:8px">
+      <button id="btnEscribir">Escribir</button>
+      <button id="btnEscribirBuscar" class="acc">Escribir y buscar</button>
+      <button id="btnSoloBuscar">Buscar</button>
+    </div>
+    <div id="progreso" class="nota"></div>
+    <div class="nota">Abre la búsqueda (🔍) de YouTube y deja el cursor en la <b>A</b>. Escribe letras, ñ y espacios (sin números por ahora).</div>
+  </section>
+
   <section>
     <div style="font-size:12px;color:var(--sub);margin-bottom:8px">Entrada</div>
     <div id="fuentes"></div>
@@ -102,6 +123,20 @@ document.querySelectorAll('[data-k]').forEach(b => {
 
 document.getElementById('btnEncender').addEventListener('click', () => { vibrar(); post('/encender'); });
 
+const campo = document.getElementById('texto');
+const escribir = (buscar) => {
+  const t = campo.value.trim();
+  if (!t && !buscar) return;
+  vibrar(); campo.blur();
+  post('/escribir', {texto:t, buscar}).then(refrescar);
+  campo.value = '';
+};
+document.getElementById('btnEscribir').addEventListener('click', () => escribir(false));
+document.getElementById('btnEscribirBuscar').addEventListener('click', () => escribir(true));
+document.getElementById('btnSoloBuscar').addEventListener('click', () => { vibrar(); post('/escribir', {texto:'', buscar:true}).then(refrescar); });
+campo.addEventListener('keydown', e => { if (e.key === 'Enter') escribir(true); });
+document.getElementById('progreso').addEventListener('click', () => post('/detener'));
+
 let fuentesPintadas = '';
 async function refrescar() {
   try {
@@ -109,6 +144,10 @@ async function refrescar() {
     document.getElementById('estado').innerHTML = s.conectado
       ? 'Conectada' + (s.fuente ? ' · <b>' + s.fuente + '</b>' : '')
       : 'TV apagada o sin red';
+    document.getElementById('progreso').innerHTML = s.escribiendo
+      ? 'Escribiendo en la TV… ' + Math.round(100 * s.escritoHecho / Math.max(1, s.escritoTotal)) + '% · <b>tocar para detener</b>'
+      : '';
+    ['btnEscribir', 'btnEscribirBuscar', 'btnSoloBuscar'].forEach(id => document.getElementById(id).disabled = s.escribiendo);
     const clave = JSON.stringify(s.fuentes) + s.fuente;
     if (clave !== fuentesPintadas) {
       fuentesPintadas = clave;
@@ -125,7 +164,7 @@ async function refrescar() {
     document.getElementById('estado').textContent = 'Sin conexión con la PC';
   }
 }
-refrescar(); setInterval(refrescar, 3000);
+refrescar(); setInterval(refrescar, 1500);
 </script>
 </body>
 </html>

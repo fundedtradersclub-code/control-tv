@@ -29,6 +29,19 @@ canales, silencio, reproducción, números y cambio de entrada (HDMI, AV, antena
 
 Las dos versiones **buscan la TV solas** en la red si cambia su dirección.
 
+### ⌨ Teclado para YouTube
+
+La TV no acepta texto por la red, así que el teclado de la app **escribe moviendo el
+cursor** por el teclado en pantalla de YouTube, letra por letra (unos 0,5 s por pulsación).
+
+1. En la TV abre YouTube y entra a la búsqueda (🔍); el cursor queda en la **A**.
+2. En la app escribe lo que buscas y toca **Escribir y buscar**.
+
+Admite letras, ñ, tildes (se escriben sin tilde) y espacios. Los números todavía no.
+Si mueves el cursor a mano con las flechas, vuelve a dejarlo en la A antes de escribir.
+El mapa del teclado está en `teclado_youtube.py` / `TecladoYouTube.java`; si tu YouTube
+muestra otro orden de letras, ajusta `FILAS`.
+
 ## Configuración (opcional)
 
 Copia `config.example.json` a `config.json` y pon la IP y la MAC de tu TV.

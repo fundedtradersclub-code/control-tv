@@ -19,7 +19,7 @@ rm -rf $OUT && mkdir -p $OUT/classes $OUT/dex
 echo "1/6 recursos"
 "$BT/aapt2.exe" compile --dir res -o $OUT/res.zip
 "$BT/aapt2.exe" link -o $OUT/base.apk -I "$JAR" --manifest AndroidManifest.xml -A assets \
-  --min-sdk-version 26 --target-sdk-version 34 --version-code 2 --version-name 1.1 $OUT/res.zip
+  --min-sdk-version 26 --target-sdk-version 34 --version-code 3 --version-name 1.2 $OUT/res.zip
 
 echo "2/6 java"
 # Genera Config.java con la IP/MAC de ../config.json (archivo local, fuera de git)
