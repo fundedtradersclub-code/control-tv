@@ -30,6 +30,33 @@ public class MqttTv {
     private OutputStream out;
     private volatile boolean conectado;
     private int packetId = 1;
+    /** Momento en que llego el ultimo paquete de la TV (cualquiera, incluido PINGRESP). */
+    private volatile long ultimoRecibido = 0;
+
+    public long msDesdeUltimoRecibido() {
+        return System.currentTimeMillis() - ultimoRecibido;
+    }
+
+    /**
+     * Pregunta a la TV si sigue ahi (PINGREQ) y espera su respuesta.
+     * Si no responde a tiempo, cierra la conexion: era una conexion "zombi".
+     */
+    public boolean verificar(int esperaMs) {
+        if (!conectado) return false;
+        long antes = System.currentTimeMillis();
+        try {
+            synchronized (this) { enviarPaquete(0xC0, new byte[0]); }
+        } catch (IOException e) {
+            cerrar();
+            return false;
+        }
+        while (System.currentTimeMillis() - antes < esperaMs) {
+            if (ultimoRecibido >= antes) return true;
+            try { Thread.sleep(40); } catch (InterruptedException e) { return conectado; }
+        }
+        cerrar();
+        return false;
+    }
 
     public MqttTv(String clientId, Listener listener) {
         this.clientId = clientId;
@@ -71,6 +98,7 @@ public class MqttTv {
         s.setSoTimeout(0);
         socket = s;
         conectado = true;
+        ultimoRecibido = System.currentTimeMillis();
 
         final Socket propio = s;
         Thread lector = new Thread(() -> leerBucle(propio, in), "mqtt-lector");
@@ -116,6 +144,7 @@ public class MqttTv {
                 int largo = leerLargo(in);
                 byte[] cuerpo = new byte[largo];
                 in.readFully(cuerpo);
+                ultimoRecibido = System.currentTimeMillis();
                 if ((cab >> 4) == 3) {  // PUBLISH
                     int lt = ((cuerpo[0] & 0xFF) << 8) | (cuerpo[1] & 0xFF);
                     String topic = new String(cuerpo, 2, lt, StandardCharsets.UTF_8);
@@ -131,16 +160,30 @@ public class MqttTv {
         }
     }
 
+    /** Ping cada 15 s; si la TV lleva 40 s sin responder nada, la conexion esta muerta. */
     private void pingBucle(Socket s) {
         try {
             while (true) {
-                Thread.sleep(30000);
+                Thread.sleep(15000);
                 synchronized (this) {
                     if (s != socket || !conectado) return;
                     enviarPaquete(0xC0, new byte[0]);
                 }
+                if (msDesdeUltimoRecibido() > 40000) {
+                    boolean eraActual;
+                    synchronized (this) { eraActual = (s == socket); }
+                    if (eraActual) {
+                        cerrar();
+                        listener.onDesconectado();
+                    }
+                    return;
+                }
             }
-        } catch (Exception ignored) { }
+        } catch (Exception e) {
+            boolean eraActual;
+            synchronized (this) { eraActual = (s == socket); }
+            if (eraActual) { cerrar(); listener.onDesconectado(); }
+        }
     }
 
     private int siguienteId() {

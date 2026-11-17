@@ -76,7 +76,12 @@
   .acc { background:var(--acc); }
   .nota { font-size:12px; color:var(--sub); margin-top:8px; }
   .nota b { color:var(--txt); }
-  #progreso:empty { display:none; }
+  .escribiendo { display:grid; grid-template-columns:1fr auto; gap:10px; align-items:center; margin-top:8px;
+                 background:#1e2128; border-radius:12px; padding:8px 8px 8px 14px; font-size:13px; }
+  .escribiendo[hidden] { display:none; }
+  .escribiendo button { min-height:40px; padding:0 16px; font-size:14px; }
+  .aviso-escritura { color:#f5d68a; }
+  .aviso-escritura:empty { display:none; }
   #teclado .fila button { font-size:14px; }
   button:disabled { opacity:.45; }
   footer { font-size:11px; color:var(--sub); text-align:center; padding-bottom:8px; }
@@ -160,7 +165,11 @@
       <button id="btnEscribirBuscar" class="acc">Escribir y buscar</button>
       <button id="btnSoloBuscar">Buscar</button>
     </div>
-    <div id="progreso" class="nota"></div>
+    <div id="escribiendoFila" class="escribiendo" hidden>
+      <span id="progreso"></span>
+      <button id="btnDetener" class="rojo">Detener</button>
+    </div>
+    <div id="msgEscritura" class="nota aviso-escritura"></div>
     <div class="nota">Abre la búsqueda (🔍) de YouTube y deja el cursor en la <b>A</b>. Escribe letras, ñ y espacios (sin números por ahora).</div>
   </section>
 
@@ -408,7 +417,7 @@ document.getElementById('btnEscribir').addEventListener('click', () => escribir(
 document.getElementById('btnEscribirBuscar').addEventListener('click', () => escribir(true));
 document.getElementById('btnSoloBuscar').addEventListener('click', () => { vibrar(); tv.soloBuscar(); refrescar(); });
 campo.addEventListener('keydown', e => { if (e.key === 'Enter') escribir(true); });
-document.getElementById('progreso').addEventListener('click', () => tv.detenerEscritura());
+document.getElementById('btnDetener').addEventListener('click', () => { vibrar(); tv.detenerEscritura(); });
 
 let fuentesPintadas = '';
 function refrescar() {
@@ -423,10 +432,10 @@ function refrescar() {
   document.getElementById('btnBuscar').disabled = s.buscando;
   document.getElementById('pie').textContent = s.ip ? 'TV: ' + s.ip : '';
   pintarTvs(s);
-  const prog = document.getElementById('progreso');
-  prog.innerHTML = s.escribiendo
-    ? 'Escribiendo en la TV… ' + Math.round(100 * s.escritoHecho / Math.max(1, s.escritoTotal)) + '% · <b>tocar para detener</b>'
-    : '';
+  document.getElementById('escribiendoFila').hidden = !s.escribiendo;
+  document.getElementById('progreso').textContent = s.escribiendo
+    ? 'Escribiendo en la TV… ' + Math.round(100 * s.escritoHecho / Math.max(1, s.escritoTotal)) + '%' : '';
+  document.getElementById('msgEscritura').textContent = s.escribiendo ? '' : (s.mensajeEscritura || '');
   ['btnEscribir', 'btnEscribirBuscar', 'btnSoloBuscar'].forEach(id => document.getElementById(id).disabled = s.escribiendo);
 
   const clave = JSON.stringify(s.fuentes) + s.fuente;

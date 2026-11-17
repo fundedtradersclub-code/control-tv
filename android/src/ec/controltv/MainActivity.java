@@ -107,10 +107,11 @@ public class MainActivity extends Activity implements MqttTv.Listener {
     private volatile boolean buscando = false;
 
     // Teclado: escribe moviendo el cursor por el teclado en pantalla de YouTube
-    private static final int PAUSA_TECLA_MS = 500;
+    private static final int PAUSA_TECLA_MS = 650;
     private final TecladoYouTube teclado = new TecladoYouTube();
     private volatile Thread escritor;
     private volatile int escritoHecho = 0, escritoTotal = 0;
+    private volatile String mensajeEscritura = "";
 
     private synchronized void escribirEnTv(String texto, boolean conBuscar) {
         if (escritor != null) return;
@@ -121,18 +122,44 @@ public class MainActivity extends Activity implements MqttTv.Listener {
         escritoTotal = seq.size();
         Thread t = new Thread(() -> {
             try {
+                // antes de empezar, confirmar que la conexion esta viva
+                if (!hilo.submit(this::asegurarConexion).get()) {
+                    mensajeEscritura = "No hay conexión con la TV. Intenta de nuevo.";
+                    teclado.reiniciar();
+                    return;
+                }
                 for (String k : seq) {
-                    if (Thread.currentThread().isInterrupted()) { teclado.reiniciar(); break; }
-                    hilo.submit(() -> {
-                        if (asegurarConexion()) {
-                            try { mqtt.publicar(tKey, k); } catch (IOException ignored) { }
+                    if (Thread.currentThread().isInterrupted()) {
+                        mensajeEscritura = "Detenido. Vuelve a dejar el cursor de la TV en la A.";
+                        teclado.reiniciar();
+                        return;
+                    }
+                    boolean ok = hilo.submit(() -> {
+                        try {
+                            if (!mqtt.estaConectado()) return false;
+                            mqtt.publicar(tKey, k);
+                            return true;
+                        } catch (IOException e) {
+                            return false;
                         }
                     }).get();
+                    if (!ok) {
+                        // se corto a medias: no seguir a ciegas
+                        mensajeEscritura = "Se cortó la conexión mientras escribía. Borra lo escrito, deja el cursor en la A y vuelve a intentar.";
+                        teclado.reiniciar();
+                        hilo.execute(this::asegurarConexion);
+                        return;
+                    }
                     escritoHecho++;
                     Thread.sleep(PAUSA_TECLA_MS);
                 }
-            } catch (Exception ignored) {
-                teclado.reiniciar();  // se detuvo a medias: la posicion ya no es segura
+                mensajeEscritura = "";
+            } catch (InterruptedException e) {
+                mensajeEscritura = "Detenido. Vuelve a dejar el cursor de la TV en la A.";
+                teclado.reiniciar();
+            } catch (Exception e) {
+                mensajeEscritura = "Algo falló al escribir. Deja el cursor en la A y vuelve a intentar.";
+                teclado.reiniciar();
             } finally {
                 escritor = null;
             }
@@ -170,7 +197,8 @@ public class MainActivity extends Activity implements MqttTv.Listener {
     @Override
     protected void onPause() {
         super.onPause();
-        hilo.execute(mqtt::cerrar);
+        // Si esta escribiendo en la TV, dejar que termine aunque se salga de la app
+        if (escritor == null) hilo.execute(mqtt::cerrar);
     }
 
     @Override
@@ -284,7 +312,8 @@ public class MainActivity extends Activity implements MqttTv.Listener {
      */
     private boolean asegurarConexion() {
         ultimoIntento = System.currentTimeMillis();
-        if (mqtt.estaConectado()) return true;
+        // Si la TV lleva rato sin decir nada, comprobar que la conexion no este muerta
+        if (mqtt.estaConectado() && (mqtt.msDesdeUltimoRecibido() < 10000 || mqtt.verificar(1500))) return true;
         if (!ip().isEmpty() && intentar(ip(), 1500)) return true;
         if (System.currentTimeMillis() - ultimaBusqueda > 60000) {
             ultimaBusqueda = System.currentTimeMillis();
@@ -592,6 +621,7 @@ public class MainActivity extends Activity implements MqttTv.Listener {
                         .put("escribiendo", escritor != null)
                         .put("escritoHecho", escritoHecho)
                         .put("escritoTotal", escritoTotal)
+                        .put("mensajeEscritura", mensajeEscritura)
                         .toString();
             } catch (JSONException e) {
                 return "{}";
