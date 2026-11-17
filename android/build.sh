@@ -19,7 +19,7 @@ rm -rf $OUT && mkdir -p $OUT/classes $OUT/dex
 echo "1/6 recursos"
 "$BT/aapt2.exe" compile --dir res -o $OUT/res.zip
 "$BT/aapt2.exe" link -o $OUT/base.apk -I "$JAR" --manifest AndroidManifest.xml -A assets \
-  --min-sdk-version 26 --target-sdk-version 34 --version-code 3 --version-name 1.2 $OUT/res.zip
+  --min-sdk-version 26 --target-sdk-version 34 --version-code 6 --version-name 1.5 $OUT/res.zip
 
 echo "2/6 java"
 # Genera Config.java con la IP/MAC de ../config.json (archivo local, fuera de git)
@@ -32,10 +32,12 @@ except (OSError, ValueError):
     cfg = {}
 ip = str(cfg.get("tv_ip", "")).replace('"', "")
 mac = str(cfg.get("tv_mac", "")).replace('"', "")
+nombre = str(cfg.get("tv_nombre", "Mi TV")).replace('"', "").replace("\\", "")
 pathlib.Path("build/gen/ec/controltv/Config.java").write_text(
     "package ec.controltv;\nfinal class Config {\n"
     f'    static final String TV_IP = "{ip}";\n'
-    f'    static final String TV_MAC = "{mac}";\n}}\n', encoding="utf-8")
+    f'    static final String TV_MAC = "{mac}";\n'
+    f'    static final String TV_NOMBRE = "{nombre}";\n}}\n', encoding="utf-8")
 PY
 "$JDK/javac.exe" --release 8 -classpath "$JAR" -encoding UTF-8 -Xlint:-options \
   -d $OUT/classes $(find src $OUT/gen -name '*.java')

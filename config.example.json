@@ -1,4 +1,5 @@
 {
   "tv_ip": "192.168.1.50",
-  "tv_mac": "AA:BB:CC:DD:EE:FF"
+  "tv_mac": "AA:BB:CC:DD:EE:FF",
+  "tv_nombre": "TV Sala"
 }

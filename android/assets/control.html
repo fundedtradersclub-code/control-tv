@@ -34,6 +34,42 @@
   #aviso { display:none; background:#2a2416; color:#f5d68a; border-radius:12px; padding:12px; font-size:14px; gap:10px; }
   #aviso.ver { display:grid; }
   #aviso button { min-height:44px; background:#3a3220; color:#f5d68a; }
+  .tv-actual { min-height:44px; padding:0 14px; display:flex; align-items:center; gap:6px; background:var(--btn); }
+  .tv-actual .flecha { color:var(--sub); font-size:12px; transition:transform .2s; }
+  .tv-actual[aria-expanded="true"] .flecha { transform:rotate(180deg); }
+  .panel-tvs { background:#1e2128; border-radius:16px; padding:14px; display:grid; gap:10px; }
+  .panel-tvs[hidden] { display:none; }
+  .tv-fila { display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center; }
+  .tv-fila .elegir { min-height:52px; text-align:left; padding:0 14px; display:grid; gap:2px; }
+  .tv-fila .elegir.actual { background:var(--acc); }
+  .tv-fila .elegir small { font-weight:400; font-size:12px; opacity:.75; }
+  .tv-fila .mini { min-height:52px; width:48px; font-size:16px; }
+  .buscar-tvs { min-height:48px; background:var(--btn2); }
+  .rapidos { display:grid; grid-template-columns:1fr 1.2fr 1.2fr; gap:10px; }
+  .voz { background:#2d2440; color:#d9c8ff; }
+  .voz.escuchando { background:#6b46c1; color:#fff; }
+  .app.netflix { background:#141414; color:#e50914; font-weight:800; letter-spacing:.06em; box-shadow:inset 0 0 0 1px #2a2a2a; }
+  .app.youtube { background:#2a1414; color:#fff; }
+  .voz-msg { font-size:13px; color:var(--sub); text-align:center; min-height:0; }
+  .voz-msg:empty { display:none; }
+  .voz-msg b { color:var(--txt); }
+  .modo { display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; background:#1e2128; border-radius:14px; }
+  .modo button { min-height:38px; font-size:14px; background:transparent; color:var(--sub); border-radius:10px; }
+  .modo button.activo { background:var(--btn2); color:var(--txt); }
+  .joy { display:flex; justify-content:center; padding:6px 0; }
+  .joy[hidden], .dpad[hidden] { display:none; }
+  .joy-base { position:relative; width:220px; height:220px; border-radius:50%; touch-action:none;
+              background:radial-gradient(circle, #2b2f39 0%, #20232b 70%); box-shadow:inset 0 0 0 2px #323743; }
+  .joy-guia { position:absolute; color:#5b6270; font-size:14px; pointer-events:none; transition:color .1s; }
+  .joy-guia.activa { color:var(--acc); }
+  .arr { top:10px; left:50%; transform:translateX(-50%); }
+  .aba { bottom:10px; left:50%; transform:translateX(-50%); }
+  .izq { left:12px; top:50%; transform:translateY(-50%); }
+  .der { right:12px; top:50%; transform:translateY(-50%); }
+  .joy-perilla { position:absolute; left:50%; top:50%; width:84px; height:84px; margin:-42px 0 0 -42px; border-radius:50%;
+                 background:var(--acc); display:grid; place-items:center; font-weight:700; pointer-events:none;
+                 box-shadow:0 6px 18px rgba(0,0,0,.4); transition:transform .18s cubic-bezier(.3,1.4,.5,1); }
+  .joy-perilla.arrastrando { transition:none; }
   #texto { width:100%; min-height:52px; border-radius:14px; border:1px solid #3a3f4b; background:#1e2128;
            color:var(--txt); font:inherit; padding:0 14px; -webkit-user-select:text; user-select:text; }
   #texto:focus { outline:2px solid var(--acc); border-color:transparent; }
@@ -49,9 +85,18 @@
 <body>
 <main>
   <header>
-    <strong>Control TV</strong>
+    <button id="btnTv" class="tv-actual" aria-expanded="false" aria-controls="panelTvs">
+      <span>📺</span> <strong id="nombreTv">Control TV</strong> <span class="flecha">▾</span>
+    </button>
     <span id="estado">Conectando…</span>
   </header>
+
+  <section id="panelTvs" class="panel-tvs" hidden>
+    <div class="titulo">Elige qué TV controlar</div>
+    <div id="listaTvs"></div>
+    <button id="btnBuscarTvs" class="buscar-tvs">🔍 Buscar TVs en mi WiFi</button>
+    <div id="msgTvs" class="nota"></div>
+  </section>
 
   <div id="aviso">
     <span id="avisoTxt"></span>
@@ -64,10 +109,30 @@
     <button data-k="KEY_MUTE" aria-label="Silencio">🔇</button>
   </div>
 
-  <div class="dpad">
+  <div class="rapidos">
+    <button id="btnVoz" class="voz" aria-label="Mando por voz">🎤 Voz</button>
+    <button class="app netflix" data-app="Netflix">NETFLIX</button>
+    <button class="app youtube" data-app="YouTube">▶ YouTube</button>
+  </div>
+  <div id="vozMsg" class="voz-msg" aria-live="polite"></div>
+
+  <div class="modo" role="tablist" aria-label="Tipo de control de dirección">
+    <button id="modoFlechas" role="tab">Flechas</button>
+    <button id="modoJoy" role="tab">Joystick</button>
+  </div>
+
+  <div class="dpad" id="dpad">
     <button class="vacio"></button><button data-k="KEY_UP" aria-label="Arriba">▲</button><button class="vacio"></button>
     <button data-k="KEY_LEFT" aria-label="Izquierda">◀</button><button class="ok" data-k="KEY_OK">OK</button><button data-k="KEY_RIGHT" aria-label="Derecha">▶</button>
     <button class="vacio"></button><button data-k="KEY_DOWN" aria-label="Abajo">▼</button><button class="vacio"></button>
+  </div>
+
+  <div class="joy" id="joy" hidden>
+    <div class="joy-base" id="joyBase" aria-label="Joystick: arrastra para moverte, toca para OK">
+      <span class="joy-guia arr">▲</span><span class="joy-guia aba">▼</span>
+      <span class="joy-guia izq">◀</span><span class="joy-guia der">▶</span>
+      <div class="joy-perilla" id="joyPerilla">OK</div>
+    </div>
   </div>
 
   <div class="fila">
@@ -135,6 +200,201 @@ document.querySelectorAll('[data-k]').forEach(b => {
 document.getElementById('btnEncender').addEventListener('click', () => { vibrar(); tv.encender(); });
 document.getElementById('btnBuscar').addEventListener('click', () => { vibrar(); tv.buscar(); refrescar(); });
 
+// ---- Apps rapidas ----
+const vozMsg = document.getElementById('vozMsg');
+let vozTimer;
+const avisar = html => { vozMsg.innerHTML = html; clearTimeout(vozTimer); vozTimer = setTimeout(() => vozMsg.innerHTML = '', 5000); };
+let abriendo = false;
+const abrirApp = nombre => {
+  if (abriendo) return;                 // evita toques repetidos mientras la app abre
+  abriendo = true; setTimeout(() => abriendo = false, 4000);
+  vibrar();
+  if (tv.abrir(nombre)) avisar('Abriendo <b>' + nombre + '</b>…');
+  else avisar('No encontré ' + nombre + ' en esta TV (¿está conectada?)');
+};
+document.querySelectorAll('[data-app]').forEach(b => b.addEventListener('click', () => abrirApp(b.dataset.app)));
+
+// ---- Mando por voz ----
+const btnVoz = document.getElementById('btnVoz');
+btnVoz.addEventListener('click', () => { vibrar(); btnVoz.classList.add('escuchando'); tv.escuchar(); });
+
+const sinTildes = t => t.toLowerCase().normalize('NFD').replace(/[̀-ͯ]/g, '').replace(/[¿?¡!.,]/g, '').trim();
+const NUM = { un:1, una:1, uno:1, dos:2, tres:3, cuatro:4, cinco:5, seis:6, siete:7, ocho:8, nueve:9, diez:10 };
+const cuantos = (t, def) => {
+  const m = t.match(/\b(\d+|un|una|uno|dos|tres|cuatro|cinco|seis|siete|ocho|nueve|diez)\b/);
+  if (!m) return def;
+  const n = /^\d+$/.test(m[1]) ? parseInt(m[1], 10) : NUM[m[1]];
+  return Math.max(1, Math.min(20, n));
+};
+const repetirTecla = (k, n) => { for (let i = 0; i < n; i++) setTimeout(() => tv.tecla(k), i * 220); };
+
+/** Interpreta una frase. Devuelve una descripcion de lo hecho, o null si no la entendio. */
+function ordenDeVoz(frase) {
+  const original = frase.trim();
+  const t = sinTildes(frase);
+  let m;
+  // buscar / escribir en YouTube (conserva lo dicho tal cual)
+  if ((m = original.match(/^(?:busca|buscar|busque)\s+(?:en youtube\s+)?(.+?)(?:\s+en youtube)?$/i))) {
+    tv.escribir(m[1], true); return 'Buscando <b>' + m[1] + '</b> (con la búsqueda de YouTube abierta)';
+  }
+  if ((m = original.match(/^(?:escribe|escribir)\s+(.+)$/i))) { tv.escribir(m[1], false); return 'Escribiendo <b>' + m[1] + '</b>'; }
+  // apps
+  if (/netflix/.test(t)) { abrirApp('Netflix'); return 'Abriendo <b>Netflix</b>'; }
+  if (/youtube|you tube/.test(t)) { abrirApp('YouTube'); return 'Abriendo <b>YouTube</b>'; }
+  if (/navegador|internet|browser/.test(t)) { abrirApp('TV Browser'); return 'Abriendo el <b>navegador</b>'; }
+  // volumen
+  if (/(sube|subir|aumenta|mas)\b.*volumen|volumen.*(arriba|mas|sube)/.test(t)) { const n = cuantos(t, 3); repetirTecla('KEY_VOLUMEUP', n); return 'Volumen <b>+' + n + '</b>'; }
+  if (/(baja|bajar|disminuye|menos)\b.*volumen|volumen.*(abajo|menos|baja)/.test(t)) { const n = cuantos(t, 3); repetirTecla('KEY_VOLUMEDOWN', n); return 'Volumen <b>−' + n + '</b>'; }
+  if (/silencio|silencia|mute|quita el sonido|sin sonido|pon sonido|activa el sonido/.test(t)) { tv.tecla('KEY_MUTE'); return '<b>Silencio</b>'; }
+  // encendido
+  if (/\b(apaga|apagar|apagala)\b/.test(t)) { tv.tecla('KEY_POWER'); return '<b>Apagando</b> la TV'; }
+  if (/\b(enciende|encender|prende|prender)\b/.test(t)) { tv.encender(); return 'Intentando <b>encender</b>'; }
+  // entradas
+  if ((m = t.match(/hdmi\s*(\d|uno|dos|tres)/))) {
+    const n = /\d/.test(m[1]) ? m[1] : NUM[m[1]];
+    const f = (JSON.parse(tv.estado()).fuentes || []).find(x => x.nombre.replace(/\s/g, '').toUpperCase() === 'HDMI' + n);
+    if (f) { tv.fuente(f.id); return 'Entrada <b>HDMI ' + n + '</b>'; }
+  }
+  if (/antena|cable|television abierta/.test(t)) {
+    const f = (JSON.parse(tv.estado()).fuentes || []).find(x => /ANT|CABLE|TV/i.test(x.nombre));
+    if (f) { tv.fuente(f.id); return 'Entrada <b>' + f.nombre + '</b>'; }
+  }
+  // canales
+  if ((m = t.match(/canal\s+(\d+)/))) { [...m[1]].forEach((d, i) => setTimeout(() => tv.tecla('KEY_' + d), i * 300)); return 'Canal <b>' + m[1] + '</b>'; }
+  if (/canal\s+(siguiente|arriba|mas)|siguiente canal|sube (el )?canal/.test(t)) { tv.tecla('KEY_CHANNELUP'); return 'Canal <b>siguiente</b>'; }
+  if (/canal\s+(anterior|abajo|menos)|canal anterior|baja (el )?canal/.test(t)) { tv.tecla('KEY_CHANNELDOWN'); return 'Canal <b>anterior</b>'; }
+  // reproduccion
+  if (/\b(pausa|pausar|deten|para)\b/.test(t)) { tv.tecla('KEY_PLAY'); return '<b>Pausa</b>'; }
+  if (/\b(reproduce|play|continua|sigue|dale play)\b/.test(t)) { tv.tecla('KEY_PLAY'); return '<b>Reproducir</b>'; }
+  if (/adelanta/.test(t)) { tv.tecla('KEY_FORWARDS'); return '<b>Adelantar</b>'; }
+  if (/retrocede|regresa el video|rebobina/.test(t)) { tv.tecla('KEY_BACK'); return '<b>Retroceder</b>'; }
+  // navegacion
+  if (/\b(atras|regresa|regresar|volver|vuelve)\b/.test(t)) { tv.tecla('KEY_RETURNS'); return '<b>Atrás</b>'; }
+  if (/\b(inicio|home|pantalla principal)\b/.test(t)) { tv.tecla('KEY_HOME'); return '<b>Inicio</b>'; }
+  if (/\bmenu\b/.test(t)) { tv.tecla('KEY_MENU'); return '<b>Menú</b>'; }
+  if (/\b(salir|sal|cierra)\b/.test(t)) { tv.tecla('KEY_EXIT'); return '<b>Salir</b>'; }
+  if (/\b(ok|okay|aceptar|acepta|selecciona|entra|entrar|enter|abre eso)\b/.test(t)) { tv.tecla('KEY_OK'); return '<b>OK</b>'; }
+  const dirs = [[/\barriba\b/, 'KEY_UP', 'Arriba'], [/\babajo\b/, 'KEY_DOWN', 'Abajo'],
+                [/\bizquierda\b/, 'KEY_LEFT', 'Izquierda'], [/\bderecha\b/, 'KEY_RIGHT', 'Derecha']];
+  for (const [re, k, nom] of dirs) if (re.test(t)) { const n = cuantos(t, 1); repetirTecla(k, n); return '<b>' + nom + (n > 1 ? ' ×' + n : '') + '</b>'; }
+  return null;
+}
+
+window.alVoz = textos => {
+  btnVoz.classList.remove('escuchando');
+  if (textos === null) { avisar('Este celular no tiene reconocimiento de voz (instala la app de Google)'); return; }
+  if (!textos.length) { avisar('No te escuché, intenta otra vez'); return; }
+  for (const f of textos) {            // prueba las alternativas hasta entender una
+    const hecho = ordenDeVoz(f);
+    if (hecho) { avisar('🎤 “' + f + '” → ' + hecho); return; }
+  }
+  avisar('No entendí “' + textos[0] + '”. Prueba: “sube el volumen”, “abre Netflix”, “HDMI 2”, “busca música”');
+};
+window.ordenDeVoz = ordenDeVoz;  // para pruebas
+
+// ---- Varias TVs ----
+const panel = document.getElementById('panelTvs'), btnTv = document.getElementById('btnTv');
+const abrirPanel = abrir => { panel.hidden = !abrir; btnTv.setAttribute('aria-expanded', abrir); };
+btnTv.addEventListener('click', () => { vibrar(); abrirPanel(panel.hidden); });
+document.getElementById('btnBuscarTvs').addEventListener('click', () => { vibrar(); tv.buscarTodas(); refrescar(); });
+
+let tvsPintadas = '';
+function pintarTvs(s) {
+  document.getElementById('nombreTv').textContent = s.nombreTv || 'Elige una TV';
+  if (s.elegir && panel.hidden) abrirPanel(true);
+  document.getElementById('btnBuscarTvs').disabled = s.buscando;
+  document.getElementById('btnBuscarTvs').textContent = s.buscando ? 'Buscando…' : '🔍 Buscar TVs en mi WiFi';
+  document.getElementById('msgTvs').textContent = s.elegir || !s.conectado ? (s.mensaje || '') : '';
+  const clave = JSON.stringify(s.tvs) + s.ip;
+  if (clave === tvsPintadas) return;
+  tvsPintadas = clave;
+  const lista = document.getElementById('listaTvs');
+  lista.innerHTML = '';
+  if (!s.tvs.length) lista.innerHTML = '<div class="nota">Aún no hay TVs guardadas. Toca “Buscar TVs”.</div>';
+  s.tvs.forEach(t => {
+    const fila = document.createElement('div'); fila.className = 'tv-fila';
+    const b = document.createElement('button');
+    b.className = 'elegir' + (t.ip === s.ip ? ' actual' : '');
+    b.innerHTML = '<span></span><small></small>';
+    b.firstChild.textContent = (t.ip === s.ip ? '✓ ' : '') + t.nombre;
+    b.lastChild.textContent = t.ip;
+    b.onclick = () => { vibrar(); tv.elegir(t.ip); abrirPanel(false); };
+    const ren = document.createElement('button'); ren.className = 'mini'; ren.textContent = '✎'; ren.setAttribute('aria-label', 'Cambiar nombre');
+    ren.onclick = () => { const n = prompt('Nombre para esta TV', t.nombre); if (n && n.trim()) { tv.renombrar(t.ip, n.trim()); tvsPintadas = ''; refrescar(); } };
+    const del = document.createElement('button'); del.className = 'mini'; del.textContent = '✕'; del.setAttribute('aria-label', 'Olvidar TV');
+    del.onclick = () => { if (confirm('¿Quitar “' + t.nombre + '” de la lista?')) { tv.olvidar(t.ip); tvsPintadas = ''; refrescar(); } };
+    fila.append(b, ren, del);
+    lista.appendChild(fila);
+  });
+}
+
+// ---- Flechas o joystick ----
+const enviarTecla = k => { vibrar(); tv.tecla(k); };
+iniciarJoystick(enviarTecla);
+
+function iniciarJoystick(enviar) {
+  const dpad = document.getElementById('dpad'), joy = document.getElementById('joy');
+  const bF = document.getElementById('modoFlechas'), bJ = document.getElementById('modoJoy');
+  const base = document.getElementById('joyBase'), perilla = document.getElementById('joyPerilla');
+  const guias = { KEY_UP:'.arr', KEY_DOWN:'.aba', KEY_LEFT:'.izq', KEY_RIGHT:'.der' };
+
+  const ponerModo = m => {
+    dpad.hidden = m === 'joy'; joy.hidden = m !== 'joy';
+    bF.classList.toggle('activo', m !== 'joy'); bJ.classList.toggle('activo', m === 'joy');
+    try { localStorage.setItem('modoDir', m); } catch (e) {}
+  };
+  let guardado = 'flechas';
+  try { guardado = localStorage.getItem('modoDir') || 'flechas'; } catch (e) {}
+  ponerModo(guardado);
+  bF.addEventListener('click', () => ponerModo('flechas'));
+  bJ.addEventListener('click', () => ponerModo('joy'));
+
+  const R = 110 - 42;          // recorrido maximo de la perilla
+  const UMBRAL = 0.35;         // fraccion del recorrido para empezar a mover
+  let activo = false, dir = null, timer = null, inicio = 0, movio = false;
+
+  const marcar = d => base.querySelectorAll('.joy-guia').forEach(g => g.classList.toggle('activa', d && g.matches(guias[d])));
+  const parar = () => { clearTimeout(timer); timer = null; };
+  const repetir = (d, frac) => {
+    parar();
+    const intervalo = 450 - 300 * Math.min(1, (frac - UMBRAL) / (1 - UMBRAL)); // 450 ms cerca, 150 ms al borde
+    timer = setTimeout(() => { enviar(d); repetir(d, ultimaFrac); }, intervalo);
+  };
+  let ultimaFrac = 0;
+
+  const mover = e => {
+    const r = base.getBoundingClientRect();
+    let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    const dist = Math.hypot(dx, dy);
+    if (dist > R) { dx *= R / dist; dy *= R / dist; }
+    perilla.style.transform = `translate(${dx}px, ${dy}px)`;
+    const frac = Math.min(1, dist / R);
+    ultimaFrac = frac;
+    const nueva = frac < UMBRAL ? null
+      : Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'KEY_RIGHT' : 'KEY_LEFT') : (dy > 0 ? 'KEY_DOWN' : 'KEY_UP');
+    if (nueva !== dir) {
+      dir = nueva; marcar(dir); parar();
+      if (dir) { movio = true; enviar(dir); repetir(dir, frac); }
+    }
+  };
+
+  base.addEventListener('pointerdown', e => {
+    e.preventDefault(); try { base.setPointerCapture(e.pointerId); } catch (_) {}
+    activo = true; movio = false; dir = null; inicio = Date.now();
+    perilla.classList.add('arrastrando'); mover(e);
+  });
+  base.addEventListener('pointermove', e => { if (activo) mover(e); });
+  const soltar = () => {
+    if (!activo) return;
+    activo = false; parar(); marcar(null);
+    perilla.classList.remove('arrastrando'); perilla.style.transform = '';
+    if (!movio && Date.now() - inicio < 350) enviar('KEY_OK');
+    dir = null;
+  };
+  base.addEventListener('pointerup', soltar);
+  base.addEventListener('pointercancel', soltar);
+}
+
 const campo = document.getElementById('texto');
 const escribir = (buscar) => {
   const t = campo.value.trim();
@@ -161,7 +421,8 @@ function refrescar() {
   aviso.classList.toggle('ver', !s.conectado);
   document.getElementById('avisoTxt').textContent = s.mensaje || 'TV apagada o sin red';
   document.getElementById('btnBuscar').disabled = s.buscando;
-  document.getElementById('pie').textContent = 'TV: ' + s.ip;
+  document.getElementById('pie').textContent = s.ip ? 'TV: ' + s.ip : '';
+  pintarTvs(s);
   const prog = document.getElementById('progreso');
   prog.innerHTML = s.escribiendo
     ? 'Escribiendo en la TV… ' + Math.round(100 * s.escritoHecho / Math.max(1, s.escritoTotal)) + '% · <b>tocar para detener</b>'

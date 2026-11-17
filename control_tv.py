@@ -78,6 +78,9 @@ MQTT_USER, MQTT_PASS = "hisenseservice", "multimqttservice"
 T_KEY = f"/remoteapp/tv/remote_service/{CLIENT_ID}$normal/actions/sendkey"
 T_SRC = f"/remoteapp/tv/ui_service/{CLIENT_ID}$normal/actions/changesource"
 T_SRCLIST = f"/remoteapp/tv/ui_service/{CLIENT_ID}$normal/actions/sourcelist"
+T_APPLIST = f"/remoteapp/tv/ui_service/{CLIENT_ID}$normal/actions/applist"
+T_LAUNCH = f"/remoteapp/tv/ui_service/{CLIENT_ID}$normal/actions/launchapp"
+apps = []
 
 estado = {"conectado": False, "fuente": None, "fuentes": []}
 cliente = None
@@ -89,6 +92,7 @@ def on_connect(c, ud, flags, rc, props=None):
     if estado["conectado"]:
         c.subscribe("/remoteapp/mobile/#")
         c.publish(T_SRCLIST, "")
+        c.publish(T_APPLIST, "")
 
 
 def on_disconnect(c, ud, flags, rc, props=None):
@@ -100,7 +104,9 @@ def on_message(c, ud, m):
         data = json.loads(m.payload or b"null")
     except ValueError:
         return
-    if m.topic.endswith("/sourcelist") and isinstance(data, list):
+    if m.topic.endswith("/applist") and isinstance(data, list):
+        apps[:] = data
+    elif m.topic.endswith("/sourcelist") and isinstance(data, list):
         estado["fuentes"] = [{"id": s.get("sourceid"), "nombre": s.get("displayname") or s.get("sourcename")} for s in data]
     elif m.topic.endswith("ui_service/state") and isinstance(data, dict) and data.get("statetype") == "sourceswitch":
         estado["fuente"] = data.get("displayname")
@@ -159,6 +165,18 @@ def escribir_en_tv(texto, con_buscar):
     return True
 
 
+def abrir_app(nombre):
+    """Abre una app de la TV (Netflix, YouTube...) con los datos de su lista de apps."""
+    for a in apps:
+        if not a.get("isunInstalled") and str(a.get("name", "")).lower() == nombre.lower():
+            carga = {"appId": a.get("appId", ""), "name": a["name"], "url": a.get("url", ""),
+                     "urlType": a.get("urlType", 0), "storeType": a.get("storeType", 0)}
+            return cliente.publish(T_LAUNCH, json.dumps(carga)).rc == 0
+    if estado["conectado"]:
+        cliente.publish(T_APPLIST, "")   # quiza aun no llego la lista: pedirla de nuevo
+    return False
+
+
 def cambiar_fuente(sid):
     return cliente.publish(T_SRC, json.dumps({"sourceid": sid})).rc == 0
 
@@ -215,6 +233,8 @@ class Handler(BaseHTTPRequestHandler):
             return self._json({"ok": True})
         if self.path == "/fuente" and datos.get("id"):
             return self._json({"ok": cambiar_fuente(str(datos["id"]))})
+        if self.path == "/abrir" and datos.get("app"):
+            return self._json({"ok": abrir_app(str(datos["app"]))})
         if self.path == "/encender":
             return self._json({"ok": encender_wol()})
         self._json({"ok": False}, 404)

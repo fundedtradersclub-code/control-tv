@@ -31,6 +31,29 @@
   #fuentes { display:flex; flex-wrap:wrap; gap:8px; }
   #fuentes button { flex:1 1 30%; min-height:44px; font-size:14px; }
   #fuentes button.activa { background:var(--acc); }
+  .rapidos { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .app.netflix { background:#141414; color:#e50914; font-weight:800; letter-spacing:.06em; box-shadow:inset 0 0 0 1px #2a2a2a; }
+  .app.youtube { background:#2a1414; color:#fff; }
+  .voz-msg { font-size:13px; color:var(--sub); text-align:center; }
+  .voz-msg:empty { display:none; }
+  .voz-msg b { color:var(--txt); }
+  .modo { display:grid; grid-template-columns:1fr 1fr; gap:4px; padding:4px; background:#1e2128; border-radius:14px; }
+  .modo button { min-height:38px; font-size:14px; background:transparent; color:var(--sub); border-radius:10px; }
+  .modo button.activo { background:var(--btn2); color:var(--txt); }
+  .joy { display:flex; justify-content:center; padding:6px 0; }
+  .joy[hidden], .dpad[hidden] { display:none; }
+  .joy-base { position:relative; width:220px; height:220px; border-radius:50%; touch-action:none;
+              background:radial-gradient(circle, #2b2f39 0%, #20232b 70%); box-shadow:inset 0 0 0 2px #323743; }
+  .joy-guia { position:absolute; color:#5b6270; font-size:14px; pointer-events:none; transition:color .1s; }
+  .joy-guia.activa { color:var(--acc); }
+  .arr { top:10px; left:50%; transform:translateX(-50%); }
+  .aba { bottom:10px; left:50%; transform:translateX(-50%); }
+  .izq { left:12px; top:50%; transform:translateY(-50%); }
+  .der { right:12px; top:50%; transform:translateY(-50%); }
+  .joy-perilla { position:absolute; left:50%; top:50%; width:84px; height:84px; margin:-42px 0 0 -42px; border-radius:50%;
+                 background:var(--acc); display:grid; place-items:center; font-weight:700; pointer-events:none;
+                 box-shadow:0 6px 18px rgba(0,0,0,.4); transition:transform .18s cubic-bezier(.3,1.4,.5,1); }
+  .joy-perilla.arrastrando { transition:none; }
   #texto { width:100%; min-height:52px; border-radius:14px; border:1px solid #3a3f4b; background:#1e2128;
            color:var(--txt); font:inherit; padding:0 14px; }
   #texto:focus { outline:2px solid var(--acc); border-color:transparent; }
@@ -55,10 +78,29 @@
     <button data-k="KEY_MUTE" aria-label="Silencio">🔇</button>
   </div>
 
-  <div class="dpad">
+  <div class="rapidos">
+    <button class="app netflix" data-app="Netflix">NETFLIX</button>
+    <button class="app youtube" data-app="YouTube">▶ YouTube</button>
+  </div>
+  <div id="appMsg" class="voz-msg" aria-live="polite"></div>
+
+  <div class="modo" role="tablist" aria-label="Tipo de control de dirección">
+    <button id="modoFlechas" role="tab">Flechas</button>
+    <button id="modoJoy" role="tab">Joystick</button>
+  </div>
+
+  <div class="dpad" id="dpad">
     <button class="vacio"></button><button data-k="KEY_UP" aria-label="Arriba">▲</button><button class="vacio"></button>
     <button data-k="KEY_LEFT" aria-label="Izquierda">◀</button><button class="ok" data-k="KEY_OK">OK</button><button data-k="KEY_RIGHT" aria-label="Derecha">▶</button>
     <button class="vacio"></button><button data-k="KEY_DOWN" aria-label="Abajo">▼</button><button class="vacio"></button>
+  </div>
+
+  <div class="joy" id="joy" hidden>
+    <div class="joy-base" id="joyBase" aria-label="Joystick: arrastra para moverte, toca para OK">
+      <span class="joy-guia arr">▲</span><span class="joy-guia aba">▼</span>
+      <span class="joy-guia izq">◀</span><span class="joy-guia der">▶</span>
+      <div class="joy-perilla" id="joyPerilla">OK</div>
+    </div>
   </div>
 
   <div class="fila">
@@ -122,6 +164,85 @@ document.querySelectorAll('[data-k]').forEach(b => {
 });
 
 document.getElementById('btnEncender').addEventListener('click', () => { vibrar(); post('/encender'); });
+
+// ---- Apps rapidas ----
+const appMsg = document.getElementById('appMsg');
+let appTimer, abriendo = false;
+document.querySelectorAll('[data-app]').forEach(b => b.addEventListener('click', async () => {
+  if (abriendo) return;                 // evita toques repetidos mientras la app abre
+  abriendo = true; vibrar();
+  const r = await post('/abrir', {app: b.dataset.app});
+  appMsg.innerHTML = r.ok ? 'Abriendo <b>' + b.dataset.app + '</b>…' : 'No pude abrir ' + b.dataset.app + '. Intenta de nuevo en unos segundos.';
+  clearTimeout(appTimer); appTimer = setTimeout(() => appMsg.innerHTML = '', 5000);
+  setTimeout(() => abriendo = false, 4000);
+}));
+
+// ---- Flechas o joystick ----
+const enviarTecla = k => { vibrar(); post('/tecla', {tecla:k}); };
+iniciarJoystick(enviarTecla);
+
+function iniciarJoystick(enviar) {
+  const dpad = document.getElementById('dpad'), joy = document.getElementById('joy');
+  const bF = document.getElementById('modoFlechas'), bJ = document.getElementById('modoJoy');
+  const base = document.getElementById('joyBase'), perilla = document.getElementById('joyPerilla');
+  const guias = { KEY_UP:'.arr', KEY_DOWN:'.aba', KEY_LEFT:'.izq', KEY_RIGHT:'.der' };
+
+  const ponerModo = m => {
+    dpad.hidden = m === 'joy'; joy.hidden = m !== 'joy';
+    bF.classList.toggle('activo', m !== 'joy'); bJ.classList.toggle('activo', m === 'joy');
+    try { localStorage.setItem('modoDir', m); } catch (e) {}
+  };
+  let guardado = 'flechas';
+  try { guardado = localStorage.getItem('modoDir') || 'flechas'; } catch (e) {}
+  ponerModo(guardado);
+  bF.addEventListener('click', () => ponerModo('flechas'));
+  bJ.addEventListener('click', () => ponerModo('joy'));
+
+  const R = 110 - 42;          // recorrido maximo de la perilla
+  const UMBRAL = 0.35;         // fraccion del recorrido para empezar a mover
+  let activo = false, dir = null, timer = null, inicio = 0, movio = false;
+
+  const marcar = d => base.querySelectorAll('.joy-guia').forEach(g => g.classList.toggle('activa', d && g.matches(guias[d])));
+  const parar = () => { clearTimeout(timer); timer = null; };
+  const repetir = (d, frac) => {
+    parar();
+    const intervalo = 450 - 300 * Math.min(1, (frac - UMBRAL) / (1 - UMBRAL)); // 450 ms cerca, 150 ms al borde
+    timer = setTimeout(() => { enviar(d); repetir(d, ultimaFrac); }, intervalo);
+  };
+  let ultimaFrac = 0;
+
+  const mover = e => {
+    const r = base.getBoundingClientRect();
+    let dx = e.clientX - (r.left + r.width / 2), dy = e.clientY - (r.top + r.height / 2);
+    const dist = Math.hypot(dx, dy);
+    if (dist > R) { dx *= R / dist; dy *= R / dist; }
+    perilla.style.transform = `translate(${dx}px, ${dy}px)`;
+    const frac = Math.min(1, dist / R);
+    ultimaFrac = frac;
+    const nueva = frac < UMBRAL ? null
+      : Math.abs(dx) > Math.abs(dy) ? (dx > 0 ? 'KEY_RIGHT' : 'KEY_LEFT') : (dy > 0 ? 'KEY_DOWN' : 'KEY_UP');
+    if (nueva !== dir) {
+      dir = nueva; marcar(dir); parar();
+      if (dir) { movio = true; enviar(dir); repetir(dir, frac); }
+    }
+  };
+
+  base.addEventListener('pointerdown', e => {
+    e.preventDefault(); try { base.setPointerCapture(e.pointerId); } catch (_) {}
+    activo = true; movio = false; dir = null; inicio = Date.now();
+    perilla.classList.add('arrastrando'); mover(e);
+  });
+  base.addEventListener('pointermove', e => { if (activo) mover(e); });
+  const soltar = () => {
+    if (!activo) return;
+    activo = false; parar(); marcar(null);
+    perilla.classList.remove('arrastrando'); perilla.style.transform = '';
+    if (!movio && Date.now() - inicio < 350) enviar('KEY_OK');
+    dir = null;
+  };
+  base.addEventListener('pointerup', soltar);
+  base.addEventListener('pointercancel', soltar);
+}
 
 const campo = document.getElementById('texto');
 const escribir = (buscar) => {

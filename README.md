@@ -29,6 +29,31 @@ canales, silencio, reproducción, números y cambio de entrada (HDMI, AV, antena
 
 Las dos versiones **buscan la TV solas** en la red si cambia su dirección.
 
+| Función | App Android | Web (PC) |
+|---|:-:|:-:|
+| Botones y entradas | ✅ | ✅ |
+| **Flechas o joystick** (el joystick repite más rápido cuanto más lo arrastras; toque = OK) | ✅ | ✅ |
+| **Acceso rápido a Netflix y YouTube** | ✅ | ✅ |
+| Teclado para YouTube | ✅ | ✅ |
+| **Mando por voz** | ✅ | — |
+| **Varias TVs** (buscar, elegir, renombrar) | ✅ | — |
+
+### 🎤 Mando por voz (Android)
+
+Toca **Voz** y habla (usa el reconocimiento de voz de Google del celular). Ejemplos:
+
+- "sube el volumen", "baja el volumen cinco", "silencio", "apaga la tele"
+- "abre Netflix", "pon YouTube", "abre el navegador"
+- "HDMI 2", "pon la antena", "canal 12", "siguiente canal"
+- "pausa", "reproduce", "atrás", "inicio", "abajo tres veces", "ok"
+- "busca música relajante" (con la búsqueda de YouTube abierta), "escribe hola"
+
+### 📺 Varias TVs (Android)
+
+Toca el nombre de la TV arriba para ver la lista: **Buscar TVs en mi WiFi** encuentra todas
+las Hisense/VIDAA prendidas; puedes elegir cuál controlar, cambiarle el nombre (✎) o quitarla (✕).
+Si hay varias TVs y la elegida cambia de dirección, la app pide elegir en vez de adivinar.
+
 ### ⌨ Teclado para YouTube
 
 La TV no acepta texto por la red, así que el teclado de la app **escribe moviendo el
@@ -50,6 +75,7 @@ Copia `config.example.json` a `config.json` y pon la IP y la MAC de tu TV.
 - Sin `tv_ip`, la TV se busca automáticamente en la red.
 - `tv_mac` solo sirve para el botón **Encender** (Wake-on-LAN). Muchas TV no lo admiten;
   si no prende, usa el botón físico.
+- `tv_nombre` es el nombre con que aparece la TV en la app (por defecto "Mi TV").
 
 ## Versión web (PC)
 
