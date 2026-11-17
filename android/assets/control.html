@@ -1,0 +1,146 @@
+<!doctype html>
+<html lang="es">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, user-scalable=no">
+<title>Control TV</title>
+<style>
+  :root { --bg:#16181d; --btn:#262a33; --btn2:#323743; --txt:#eef0f4; --sub:#9aa1ad; --acc:#3d7cf5; --rojo:#e5484d; }
+  * { box-sizing:border-box; -webkit-tap-highlight-color:transparent; -webkit-user-select:none; user-select:none; }
+  html, body { margin:0; background:var(--bg); color:var(--txt); font:16px/1.3 system-ui, sans-serif; }
+  body { display:flex; justify-content:center; }
+  main { width:100%; max-width:420px; padding:16px; display:grid; gap:18px; }
+  header { display:flex; justify-content:space-between; align-items:center; gap:8px; }
+  #estado { font-size:13px; color:var(--sub); text-align:right; }
+  #estado b { color:var(--txt); font-weight:600; }
+  .fila { display:grid; grid-template-columns:repeat(3,1fr); gap:10px; }
+  button { border:0; border-radius:14px; background:var(--btn); color:var(--txt); font:inherit; font-weight:600;
+           min-height:56px; cursor:pointer; transition:transform .08s, background .15s; touch-action:manipulation; }
+  button:active { transform:scale(.94); background:var(--btn2); }
+  .rojo { background:var(--rojo); }
+  .dpad { display:grid; grid-template-columns:repeat(3,1fr); grid-template-rows:repeat(3,66px); gap:8px; }
+  .dpad button { min-height:0; font-size:20px; }
+  .ok { border-radius:50%; background:var(--acc); }
+  .vacio { visibility:hidden; }
+  .pares { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  .col { display:grid; gap:8px; }
+  .col span, .titulo { text-align:center; font-size:12px; color:var(--sub); }
+  .titulo { text-align:left; margin-bottom:8px; }
+  details summary { color:var(--sub); padding:6px 0; }
+  .num { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; margin-top:8px; }
+  #fuentes { display:flex; flex-wrap:wrap; gap:8px; }
+  #fuentes button { flex:1 1 30%; min-height:44px; font-size:14px; }
+  #fuentes button.activa { background:var(--acc); }
+  #aviso { display:none; background:#2a2416; color:#f5d68a; border-radius:12px; padding:12px; font-size:14px; gap:10px; }
+  #aviso.ver { display:grid; }
+  #aviso button { min-height:44px; background:#3a3220; color:#f5d68a; }
+  footer { font-size:11px; color:var(--sub); text-align:center; padding-bottom:8px; }
+</style>
+</head>
+<body>
+<main>
+  <header>
+    <strong>Control TV</strong>
+    <span id="estado">Conectando…</span>
+  </header>
+
+  <div id="aviso">
+    <span id="avisoTxt"></span>
+    <button id="btnBuscar">Buscar la TV en mi WiFi</button>
+  </div>
+
+  <div class="fila">
+    <button class="rojo" data-k="KEY_POWER" aria-label="Apagar o encender">⏻ Power</button>
+    <button id="btnEncender" aria-label="Encender por red">Encender</button>
+    <button data-k="KEY_MUTE" aria-label="Silencio">🔇</button>
+  </div>
+
+  <div class="dpad">
+    <button class="vacio"></button><button data-k="KEY_UP" aria-label="Arriba">▲</button><button class="vacio"></button>
+    <button data-k="KEY_LEFT" aria-label="Izquierda">◀</button><button class="ok" data-k="KEY_OK">OK</button><button data-k="KEY_RIGHT" aria-label="Derecha">▶</button>
+    <button class="vacio"></button><button data-k="KEY_DOWN" aria-label="Abajo">▼</button><button class="vacio"></button>
+  </div>
+
+  <div class="fila">
+    <button data-k="KEY_RETURNS">↩ Atrás</button>
+    <button data-k="KEY_HOME">⌂ Inicio</button>
+    <button data-k="KEY_MENU">☰ Menú</button>
+  </div>
+
+  <div class="pares">
+    <div class="col"><span>Volumen</span><button data-k="KEY_VOLUMEUP" data-rep>＋</button><button data-k="KEY_VOLUMEDOWN" data-rep>－</button></div>
+    <div class="col"><span>Canal</span><button data-k="KEY_CHANNELUP">▲</button><button data-k="KEY_CHANNELDOWN">▼</button></div>
+  </div>
+
+  <div class="fila">
+    <button data-k="KEY_BACK">⏪</button>
+    <button data-k="KEY_PLAY">⏯</button>
+    <button data-k="KEY_FORWARDS">⏩</button>
+  </div>
+
+  <section>
+    <div class="titulo">Entrada</div>
+    <div id="fuentes"></div>
+  </section>
+
+  <details>
+    <summary>Números</summary>
+    <div class="num">
+      <button data-k="KEY_1">1</button><button data-k="KEY_2">2</button><button data-k="KEY_3">3</button>
+      <button data-k="KEY_4">4</button><button data-k="KEY_5">5</button><button data-k="KEY_6">6</button>
+      <button data-k="KEY_7">7</button><button data-k="KEY_8">8</button><button data-k="KEY_9">9</button>
+      <button data-k="KEY_EXIT">Salir</button><button data-k="KEY_0">0</button><button data-k="KEY_SUBTITLE">Subt.</button>
+    </div>
+  </details>
+
+  <footer id="pie"></footer>
+</main>
+<script>
+const tv = window.TV;
+const vibrar = () => { try { navigator.vibrate && navigator.vibrate(15); } catch(e){} };
+
+document.querySelectorAll('[data-k]').forEach(b => {
+  const send = () => { vibrar(); tv.tecla(b.dataset.k); };
+  if (b.hasAttribute('data-rep')) {
+    let t;
+    const stop = () => clearInterval(t);
+    b.addEventListener('pointerdown', e => { e.preventDefault(); send(); t = setInterval(send, 180); });
+    ['pointerup','pointerleave','pointercancel'].forEach(ev => b.addEventListener(ev, stop));
+  } else {
+    b.addEventListener('click', send);
+  }
+});
+
+document.getElementById('btnEncender').addEventListener('click', () => { vibrar(); tv.encender(); });
+document.getElementById('btnBuscar').addEventListener('click', () => { vibrar(); tv.buscar(); refrescar(); });
+
+let fuentesPintadas = '';
+function refrescar() {
+  let s;
+  try { s = JSON.parse(tv.estado()); } catch (e) { return; }
+  document.getElementById('estado').innerHTML = s.conectado
+    ? 'Conectada' + (s.fuente ? ' · <b>' + s.fuente + '</b>' : '')
+    : (s.buscando ? 'Buscando…' : 'Sin conexión');
+  const aviso = document.getElementById('aviso');
+  aviso.classList.toggle('ver', !s.conectado);
+  document.getElementById('avisoTxt').textContent = s.mensaje || 'TV apagada o sin red';
+  document.getElementById('btnBuscar').disabled = s.buscando;
+  document.getElementById('pie').textContent = 'TV: ' + s.ip;
+
+  const clave = JSON.stringify(s.fuentes) + s.fuente;
+  if (clave !== fuentesPintadas) {
+    fuentesPintadas = clave;
+    const cont = document.getElementById('fuentes');
+    cont.innerHTML = '';
+    s.fuentes.forEach(f => {
+      const b = document.createElement('button');
+      b.textContent = f.nombre; if (f.nombre === s.fuente) b.className = 'activa';
+      b.onclick = () => { vibrar(); tv.fuente(f.id); };
+      cont.appendChild(b);
+    });
+  }
+}
+refrescar(); setInterval(refrescar, 1500);
+</script>
+</body>
+</html>

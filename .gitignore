@@ -1,0 +1,13 @@
+# Datos locales de tu red (IP y MAC de la TV)
+config.json
+
+# Compilados y firma
+*.apk
+*.idsig
+*.keystore
+*.jks
+android/build/
+
+# Python
+__pycache__/
+*.pyc

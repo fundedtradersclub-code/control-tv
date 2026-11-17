@@ -1,0 +1,18 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!-- Control remoto estilizado, 108x108 con zona segura central de 66 -->
+<vector xmlns:android="http://schemas.android.com/apk/res/android"
+    android:width="108dp" android:height="108dp"
+    android:viewportWidth="108" android:viewportHeight="108">
+    <!-- cuerpo del control -->
+    <path android:fillColor="#262A33"
+        android:pathData="M42,26h24a6,6 0 0 1 6,6v44a6,6 0 0 1 -6,6h-24a6,6 0 0 1 -6,-6v-44a6,6 0 0 1 6,-6z" />
+    <!-- boton power -->
+    <path android:fillColor="#E5484D"
+        android:pathData="M54,30.5a3.5,3.5 0 1 1 0,7a3.5,3.5 0 1 1 0,-7z" />
+    <!-- boton OK -->
+    <path android:fillColor="#3D7CF5"
+        android:pathData="M54,44a8,8 0 1 1 0,16a8,8 0 1 1 0,-16z" />
+    <!-- botones inferiores -->
+    <path android:fillColor="#9AA1AD"
+        android:pathData="M44,66h6v4h-6z M51,66h6v4h-6z M58,66h6v4h-6z M44,73h6v4h-6z M51,73h6v4h-6z M58,73h6v4h-6z" />
+</vector>
