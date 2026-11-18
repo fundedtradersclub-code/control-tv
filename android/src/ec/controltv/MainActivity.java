@@ -76,6 +76,7 @@ public class MainActivity extends Activity implements MqttTv.Listener {
 
     /** Abre una app de la TV por su nombre (Netflix, YouTube...). */
     private boolean abrirApp(String nombre) {
+        if (esAtv()) return abrirAppAtv(nombre);
         try {
             JSONArray apps = new JSONArray(appsJson);
             for (int i = 0; i < apps.length(); i++) {
@@ -98,6 +99,192 @@ public class MainActivity extends Activity implements MqttTv.Listener {
 
     private final ExecutorService hilo = Executors.newSingleThreadExecutor();
     private final MqttTv mqtt = new MqttTv(CLIENT_ID, this);
+
+    // ---- Android TV / Google TV (protocolo oficial con codigo de vinculacion) ----
+    private AndroidTvRemote atv;
+    private volatile AndroidTvRemote.Vinculacion vinculacion;
+    private volatile boolean pedirCodigo = false;
+
+    private boolean esAtv() {
+        JSONObject o = tvPorIp(tvs(), ip());
+        return o != null && "atv".equals(o.optString("tipo"));
+    }
+
+    private boolean conectado() {
+        return esAtv() ? (atv != null && atv.estaConectado()) : mqtt.estaConectado();
+    }
+
+    /** Certificado propio del control, creado una sola vez (en el hilo de red). */
+    private AndroidTvRemote getAtv() throws Exception {
+        if (atv == null) {
+            String guardada = prefs.getString("atv_id", "");
+            AndroidTvRemote.Identidad id;
+            if (guardada.isEmpty()) {
+                mensaje = "Preparando la conexión segura…";
+                id = AndroidTvRemote.Identidad.crear();
+                prefs.edit().putString("atv_id", id.guardar()).apply();
+            } else {
+                id = AndroidTvRemote.Identidad.cargar(guardada);
+            }
+            atv = new AndroidTvRemote(id, new AndroidTvRemote.Listener() {
+                public void onDesconectado() { mensaje = "TV apagada o sin red"; }
+                public void onAppActual(String paquete) { }
+            });
+            atvId = id;
+        }
+        return atv;
+    }
+
+    private AndroidTvRemote.Identidad atvId;
+
+    /** Conecta con la Android TV; si no esta vinculada, pide el codigo de la pantalla. */
+    private boolean asegurarAtv() {
+        try {
+            AndroidTvRemote r = getAtv();
+            if (r.estaConectado() && r.msDesdeUltimoRecibido() < 30000) return true;
+            if (pedirCodigo) return false;     // esperando que escriban el codigo
+            r.conectar(ip(), 6000);
+            mensaje = "";
+            return true;
+        } catch (AndroidTvRemote.NoVinculada e) {
+            iniciarVinculacion();
+            return false;
+        } catch (Exception e) {
+            mensaje = "TV apagada o sin red";
+            return false;
+        }
+    }
+
+    private void iniciarVinculacion() {
+        if (vinculacion != null) return;
+        try {
+            getAtv();
+            AndroidTvRemote.Vinculacion v = new AndroidTvRemote.Vinculacion(ip(), atvId);
+            v.iniciar("Control TV");
+            vinculacion = v;
+            pedirCodigo = true;
+            mensaje = "Escribe el código que aparece en la TV";
+        } catch (Exception e) {
+            mensaje = "No se pudo iniciar la vinculación. ¿La TV está prendida?";
+        }
+    }
+
+    private void confirmarCodigo(String codigo) {
+        hilo.execute(() -> {
+            AndroidTvRemote.Vinculacion v = vinculacion;
+            if (v == null) { iniciarVinculacion(); return; }
+            try {
+                v.terminar(codigo);
+                vinculacion = null;
+                pedirCodigo = false;
+                mensaje = "¡Vinculada! Conectando…";
+                asegurarAtv();
+            } catch (IllegalArgumentException e) {
+                mensaje = e.getMessage() + ". Revisa el código de la TV.";
+            } catch (Exception e) {
+                v.cerrar();
+                vinculacion = null;
+                pedirCodigo = false;
+                mensaje = "La vinculación falló. Toca la TV en la lista para intentar de nuevo.";
+            }
+        });
+    }
+
+    private void cancelarVinculacion() {
+        AndroidTvRemote.Vinculacion v = vinculacion;
+        if (v != null) v.cerrar();
+        vinculacion = null;
+        pedirCodigo = false;
+    }
+
+    /** Teclas del control (KEY_*) traducidas a codigos de Android. */
+    private static int keycodeAtv(String k) {
+        switch (k) {
+            case "KEY_POWER": return 26;
+            case "KEY_UP": return 19;
+            case "KEY_DOWN": return 20;
+            case "KEY_LEFT": return 21;
+            case "KEY_RIGHT": return 22;
+            case "KEY_OK": return 23;
+            case "KEY_RETURNS": case "KEY_EXIT": return 4;
+            case "KEY_HOME": return 3;
+            case "KEY_MENU": return 82;
+            case "KEY_VOLUMEUP": return 24;
+            case "KEY_VOLUMEDOWN": return 25;
+            case "KEY_MUTE": return 164;
+            case "KEY_CHANNELUP": return 166;
+            case "KEY_CHANNELDOWN": return 167;
+            case "KEY_PLAY": return 85;
+            case "KEY_FORWARDS": return 90;
+            case "KEY_BACK": return 89;
+            case "KEY_SUBTITLE": return 175;
+            default:
+                if (k.matches("KEY_[0-9]")) return 7 + (k.charAt(4) - '0');
+                return -1;
+        }
+    }
+
+    private static final String FUENTES_ATV =
+            "[{\"id\":\"243\",\"nombre\":\"HDMI1\"},{\"id\":\"244\",\"nombre\":\"HDMI2\"},"
+            + "{\"id\":\"245\",\"nombre\":\"HDMI3\"},{\"id\":\"170\",\"nombre\":\"TV\"}]";
+
+    private void enviarAtv(int keycode) {
+        if (keycode < 0) return;
+        hilo.execute(() -> {
+            if (!asegurarAtv()) return;
+            try {
+                atv.tecla(keycode);
+            } catch (IOException e) {
+                if (asegurarAtv()) { try { atv.tecla(keycode); } catch (IOException ignored) { } }
+            }
+        });
+    }
+
+    private boolean abrirAppAtv(String nombre) {
+        String enlace;
+        switch (nombre.toLowerCase()) {
+            case "netflix": enlace = "https://www.netflix.com/title"; break;
+            case "youtube": enlace = "https://www.youtube.com"; break;
+            default: return false;
+        }
+        hilo.execute(() -> {
+            if (asegurarAtv()) { try { atv.abrirEnlace(enlace); } catch (IOException ignored) { } }
+        });
+        return true;
+    }
+
+    private void escribirAtv(String texto, boolean conBuscar) {
+        hilo.execute(() -> {
+            if (!asegurarAtv()) { mensajeEscritura = "No hay conexión con la TV. Intenta de nuevo."; return; }
+            try {
+                if (!texto.isEmpty()) atv.texto(texto);
+                if (conBuscar) { Thread.sleep(300); atv.tecla(66); }   // ENTER
+                mensajeEscritura = "";
+            } catch (Exception e) {
+                mensajeEscritura = "No se pudo escribir. ¿Hay un campo de texto abierto en la TV?";
+            }
+        });
+    }
+
+    /** Nombre que la TV anuncia por Chromecast (puerto 8008), si lo tiene. */
+    private static String nombreCast(String ip) {
+        java.net.HttpURLConnection c = null;
+        try {
+            c = (java.net.HttpURLConnection) new java.net.URL("http://" + ip + ":8008/setup/eureka_info?params=name").openConnection();
+            c.setConnectTimeout(1500);
+            c.setReadTimeout(1500);
+            java.io.InputStream in = c.getInputStream();
+            java.io.ByteArrayOutputStream o = new java.io.ByteArrayOutputStream();
+            byte[] buf = new byte[2048];
+            int n;
+            while ((n = in.read(buf)) > 0) o.write(buf, 0, n);
+            return new JSONObject(o.toString("UTF-8")).optString("name", "");
+        } catch (Exception e) {
+            return "";
+        } finally {
+            if (c != null) c.disconnect();
+        }
+    }
     private SharedPreferences prefs;
     private WebView web;
 
@@ -114,6 +301,7 @@ public class MainActivity extends Activity implements MqttTv.Listener {
     private volatile String mensajeEscritura = "";
 
     private synchronized void escribirEnTv(String texto, boolean conBuscar) {
+        if (esAtv()) { escribirAtv(texto, conBuscar); return; }   // Android TV acepta texto directo
         if (escritor != null) return;
         final List<String> seq = new ArrayList<>(teclado.escribir(texto));
         if (conBuscar) seq.addAll(teclado.buscar());
@@ -197,8 +385,12 @@ public class MainActivity extends Activity implements MqttTv.Listener {
     @Override
     protected void onPause() {
         super.onPause();
-        // Si esta escribiendo en la TV, dejar que termine aunque se salga de la app
-        if (escritor == null) hilo.execute(mqtt::cerrar);
+        // Si esta escribiendo en la TV, dejar que termine aunque se salga de la app.
+        // Tampoco cerrar si se esta vinculando (el usuario puede salir a mirar el codigo).
+        if (escritor == null && !pedirCodigo) hilo.execute(() -> {
+            mqtt.cerrar();
+            if (atv != null) atv.cerrar();
+        });
     }
 
     @Override
@@ -243,6 +435,24 @@ public class MainActivity extends Activity implements MqttTv.Listener {
                 guardarTvs(a);
             } catch (JSONException ignored) { }
         }
+    }
+
+    /** Agrega TVs de cualquier tipo encontradas en la busqueda manual. */
+    private synchronized void agregarTodas(List<String[]> halladas) {
+        JSONArray a = tvs();
+        try {
+            for (String[] t : halladas) {
+                JSONObject o = tvPorIp(a, t[0]);
+                if (o == null) {
+                    String sufijo = t[0].substring(t[0].lastIndexOf('.') + 1);
+                    String nombre = !t[2].isEmpty() ? t[2] : ("atv".equals(t[1]) ? "Android TV " : "TV ") + sufijo;
+                    a.put(new JSONObject().put("ip", t[0]).put("nombre", nombre).put("mac", "").put("tipo", t[1]));
+                } else if (!t[1].equals(o.optString("tipo", "vidaa"))) {
+                    o.put("tipo", t[1]);
+                }
+            }
+        } catch (JSONException ignored) { }
+        guardarTvs(a);
     }
 
     /** Agrega a la lista las TVs nuevas encontradas. */
@@ -294,13 +504,20 @@ public class MainActivity extends Activity implements MqttTv.Listener {
     private void elegirTv(String nueva) {
         hilo.execute(() -> {
             mqtt.cerrar();
+            if (atv != null) atv.cerrar();
+            cancelarVinculacion();
             prefs.edit().putString("ip", nueva).apply();
             fuente = "";
             fuentesJson = "[]";
             teclado.reiniciar();
             pedirEleccion = false;
             mensaje = "Conectando…";
-            if (!intentar(nueva, 2000)) mensaje = "Esa TV no responde. ¿Está prendida?";
+            if (esAtv()) {
+                if (asegurarAtv()) fuentesJson = FUENTES_ATV;
+                else if (!pedirCodigo) mensaje = "Esa TV no responde. ¿Está prendida?";
+            } else if (!intentar(nueva, 2000)) {
+                mensaje = "Esa TV no responde. ¿Está prendida?";
+            }
         });
     }
 
@@ -312,6 +529,7 @@ public class MainActivity extends Activity implements MqttTv.Listener {
      */
     private boolean asegurarConexion() {
         ultimoIntento = System.currentTimeMillis();
+        if (esAtv()) return asegurarAtv();
         // Si la TV lleva rato sin decir nada, comprobar que la conexion no este muerta
         if (mqtt.estaConectado() && (mqtt.msDesdeUltimoRecibido() < 10000 || mqtt.verificar(1500))) return true;
         if (!ip().isEmpty() && intentar(ip(), 1500)) return true;
@@ -340,24 +558,51 @@ public class MainActivity extends Activity implements MqttTv.Listener {
         }
     }
 
-    /** Recorre la red WiFi y devuelve todas las IP con el puerto de control abierto (null = sin WiFi). */
+    /** Recorre la red WiFi y devuelve las IP de TVs Hisense VIDAA (null = sin WiFi). */
     private static List<String> escanear() {
+        List<String[]> todas = escanearTodas();
+        if (todas == null) return null;
+        List<String> r = new ArrayList<>();
+        for (String[] t : todas) if ("vidaa".equals(t[1])) r.add(t[0]);
+        return r;
+    }
+
+    private static boolean puertoAbierto(String ip, int puerto) {
+        try (Socket s = new Socket()) {
+            s.connect(new InetSocketAddress(ip, puerto), 400);
+            return true;
+        } catch (IOException e) {
+            return false;
+        }
+    }
+
+    /** Busca TVs de todos los tipos: {ip, tipo ("vidaa" o "atv"), nombre anunciado}. */
+    private static List<String[]> escanearTodas() {
         String base = baseRed();
         if (base == null) return null;
-        final ConcurrentLinkedQueue<String> halladas = new ConcurrentLinkedQueue<>();
+        final ConcurrentLinkedQueue<String[]> halladas = new ConcurrentLinkedQueue<>();
         ExecutorService pool = Executors.newFixedThreadPool(48);
         for (int i = 1; i < 255; i++) {
             final String cand = base + i;
             pool.execute(() -> {
-                try (Socket s = new Socket()) {
-                    s.connect(new InetSocketAddress(cand, MqttTv.PUERTO), 400);
-                    halladas.add(cand);
-                } catch (IOException ignored) { }
+                if (puertoAbierto(cand, MqttTv.PUERTO)) {
+                    halladas.add(new String[]{cand, "vidaa", ""});
+                } else if (puertoAbierto(cand, AndroidTvRemote.PUERTO_CONTROL)) {
+                    halladas.add(new String[]{cand, "atv", nombreCast(cand)});
+                }
             });
         }
         pool.shutdown();
-        try { pool.awaitTermination(15, TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
-        List<String> lista = new ArrayList<>(halladas);
+        try { pool.awaitTermination(20, TimeUnit.SECONDS); } catch (InterruptedException ignored) { }
+        List<String[]> lista = new ArrayList<>(halladas);
+        Collections.sort(lista, (x, y) -> Integer.compare(
+                Integer.parseInt(x[0].substring(x[0].lastIndexOf('.') + 1)),
+                Integer.parseInt(y[0].substring(y[0].lastIndexOf('.') + 1))));
+        return lista;
+    }
+
+    private static List<String> soloIps(List<String> ips) {
+        List<String> lista = new ArrayList<>(ips);
         Collections.sort(lista, (x, y) -> Integer.compare(
                 Integer.parseInt(x.substring(x.lastIndexOf('.') + 1)),
                 Integer.parseInt(y.substring(y.lastIndexOf('.') + 1))));
@@ -393,12 +638,12 @@ public class MainActivity extends Activity implements MqttTv.Listener {
     private void buscarTodas() {
         buscando = true;
         try {
-            List<String> ips = escanear();
-            if (ips == null) { mensaje = "Conecta el celular al WiFi de la casa"; return; }
-            agregarNuevas(ips);
-            if (ip().isEmpty() && ips.size() == 1) elegirTv(ips.get(0));
-            mensaje = ips.isEmpty() ? "No encontré TVs prendidas en este WiFi"
-                    : "Encontré " + ips.size() + (ips.size() == 1 ? " TV" : " TVs");
+            List<String[]> halladas = escanearTodas();
+            if (halladas == null) { mensaje = "Conecta el celular al WiFi de la casa"; return; }
+            agregarTodas(halladas);
+            if (ip().isEmpty() && halladas.size() == 1) elegirTv(halladas.get(0)[0]);
+            mensaje = halladas.isEmpty() ? "No encontré TVs prendidas en este WiFi"
+                    : "Encontré " + halladas.size() + (halladas.size() == 1 ? " TV" : " TVs");
         } finally {
             buscando = false;
         }
@@ -504,8 +749,19 @@ public class MainActivity extends Activity implements MqttTv.Listener {
             if (k != null && k.startsWith("KEY_")) {
                 // el cursor se movio a mano: para el teclado, volver a suponer la A
                 teclado.reiniciar();
-                enviar(tKey, k);
+                if (esAtv()) enviarAtv(keycodeAtv(k));
+                else enviar(tKey, k);
             }
+        }
+
+        @JavascriptInterface
+        public void codigo(String c) {
+            if (c != null) confirmarCodigo(c);
+        }
+
+        @JavascriptInterface
+        public void cancelarCodigo() {
+            hilo.execute(() -> { cancelarVinculacion(); mensaje = "Vinculación cancelada"; });
         }
 
         @JavascriptInterface
@@ -526,6 +782,10 @@ public class MainActivity extends Activity implements MqttTv.Listener {
 
         @JavascriptInterface
         public void fuente(String id) {
+            if (esAtv()) {
+                try { enviarAtv(Integer.parseInt(id)); } catch (NumberFormatException ignored) { }
+                return;
+            }
             try {
                 enviar(tSrc, new JSONObject().put("sourceid", id).toString());
             } catch (JSONException ignored) { }
@@ -591,6 +851,8 @@ public class MainActivity extends Activity implements MqttTv.Listener {
             if (ipTv != null && ipTv.equals(ip())) {
                 hilo.execute(() -> {
                     mqtt.cerrar();
+                    if (atv != null) atv.cerrar();
+                    cancelarVinculacion();
                     prefs.edit().putString("ip", "").apply();
                     fuentesJson = "[]";
                     fuente = "";
@@ -602,16 +864,19 @@ public class MainActivity extends Activity implements MqttTv.Listener {
         @JavascriptInterface
         public String estado() {
             // Mientras la app esta abierta y sin conexion, reintenta cada 10 s
-            if (!mqtt.estaConectado() && !buscando
+            boolean atvActual = esAtv();
+            if (!conectado() && !buscando && !pedirCodigo
                     && System.currentTimeMillis() - ultimoIntento > 10000) {
                 ultimoIntento = System.currentTimeMillis();
                 hilo.execute(MainActivity.this::asegurarConexion);
             }
             try {
                 return new JSONObject()
-                        .put("conectado", mqtt.estaConectado())
-                        .put("fuente", fuente)
-                        .put("fuentes", new JSONArray(fuentesJson))
+                        .put("conectado", conectado())
+                        .put("tipo", atvActual ? "atv" : "vidaa")
+                        .put("pedirCodigo", pedirCodigo)
+                        .put("fuente", atvActual ? "" : fuente)
+                        .put("fuentes", new JSONArray(atvActual ? FUENTES_ATV : fuentesJson))
                         .put("mensaje", mensaje)
                         .put("buscando", buscando)
                         .put("ip", ip())

@@ -63,14 +63,52 @@
   #progreso { cursor:pointer; }
   #teclado .fila button { font-size:14px; }
   button:disabled { opacity:.45; }
+  .tv-actual { min-height:44px; padding:0 14px; display:flex; align-items:center; gap:6px; }
+  .tv-actual .flecha { color:var(--sub); font-size:12px; transition:transform .2s; }
+  .tv-actual[aria-expanded="true"] .flecha { transform:rotate(180deg); }
+  .panel-tvs, .panel-codigo { background:#1e2128; border-radius:16px; padding:14px; display:grid; gap:10px; }
+  .panel-codigo { background:#1d2433; border:1px solid var(--acc); }
+  .panel-tvs[hidden], .panel-codigo[hidden] { display:none; }
+  .titulo-p { font-size:12px; color:var(--sub); }
+  .tv-fila { display:grid; grid-template-columns:1fr auto; gap:8px; align-items:center; }
+  .tv-fila .elegir { min-height:52px; text-align:left; padding:0 14px; display:grid; gap:2px; }
+  .tv-fila .elegir.actual { background:var(--acc); }
+  .tv-fila .elegir small { font-weight:400; font-size:12px; opacity:.75; }
+  .tv-fila .mini { min-height:52px; width:48px; }
+  .buscar-tvs { min-height:48px; background:var(--btn2); }
+  #campoCodigo { width:100%; min-height:56px; border-radius:14px; border:1px solid #3a3f4b; background:#16181d; color:var(--txt);
+                 font:700 26px/1 ui-monospace, monospace; letter-spacing:.3em; text-align:center; text-transform:uppercase; }
+  .aviso { color:#f5d68a; }
+  .aviso:empty { display:none; }
+  .pares { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
 </style>
 </head>
 <body>
 <main>
   <header>
-    <strong>Control TV</strong>
+    <button id="btnTv" class="tv-actual" aria-expanded="false" aria-controls="panelTvs">
+      <span>📺</span> <strong id="nombreTv">Control TV</strong> <span class="flecha">▾</span>
+    </button>
     <span id="estado">Conectando…</span>
   </header>
+
+  <section id="panelCodigo" class="panel-codigo" hidden>
+    <div class="titulo-p">🔗 Vincular esta TV</div>
+    <div class="nota">En la pantalla de la TV apareció un código de 6 caracteres. Escríbelo aquí:</div>
+    <input id="campoCodigo" type="text" maxlength="6" autocomplete="off" placeholder="Ej. A1B2C3" spellcheck="false">
+    <div class="pares">
+      <button id="btnCancelarCodigo">Cancelar</button>
+      <button id="btnVincular" class="acc">Vincular</button>
+    </div>
+    <div id="msgCodigo" class="nota aviso"></div>
+  </section>
+
+  <section id="panelTvs" class="panel-tvs" hidden>
+    <div class="titulo-p">Elige qué TV controlar</div>
+    <div id="listaTvs"></div>
+    <button id="btnBuscarTvs" class="buscar-tvs">🔍 Buscar TVs en mi WiFi</button>
+    <div id="msgTvs" class="nota"></div>
+  </section>
 
   <div class="fila">
     <button class="rojo" data-k="KEY_POWER" aria-label="Apagar o encender">⏻ Power</button>
@@ -121,7 +159,7 @@
   </div>
 
   <section id="teclado">
-    <div style="font-size:12px;color:var(--sub);margin-bottom:8px">⌨ Escribir en YouTube</div>
+    <div id="tituloTeclado" style="font-size:12px;color:var(--sub);margin-bottom:8px">⌨ Escribir en YouTube</div>
     <input id="texto" type="text" placeholder="Qué quieres buscar…" autocomplete="off" enterkeyhint="search">
     <div class="fila" style="margin-top:8px">
       <button id="btnEscribir">Escribir</button>
@@ -129,7 +167,7 @@
       <button id="btnSoloBuscar">Buscar</button>
     </div>
     <div id="progreso" class="nota"></div>
-    <div class="nota">Abre la búsqueda (🔍) de YouTube y deja el cursor en la <b>A</b>. Escribe letras, ñ y espacios (sin números por ahora).</div>
+    <div class="nota" id="notaTeclado">Abre la búsqueda (🔍) de YouTube y deja el cursor en la <b>A</b>. Escribe letras, ñ y espacios (sin números por ahora).</div>
   </section>
 
   <section>
@@ -258,13 +296,68 @@ document.getElementById('btnSoloBuscar').addEventListener('click', () => { vibra
 campo.addEventListener('keydown', e => { if (e.key === 'Enter') escribir(true); });
 document.getElementById('progreso').addEventListener('click', () => post('/detener'));
 
+// ---- Varias TVs y vinculacion ----
+const panel = document.getElementById('panelTvs'), btnTv = document.getElementById('btnTv');
+const panelCodigo = document.getElementById('panelCodigo'), campoCodigo = document.getElementById('campoCodigo');
+const abrirPanel = a => { panel.hidden = !a; btnTv.setAttribute('aria-expanded', a); };
+btnTv.addEventListener('click', () => abrirPanel(panel.hidden));
+document.getElementById('btnBuscarTvs').addEventListener('click', () => post('/buscar').then(refrescar));
+const enviarCodigo = async () => {
+  const c = campoCodigo.value.trim().toUpperCase();
+  const msg = document.getElementById('msgCodigo');
+  if (!/^[0-9A-F]{6}$/.test(c)) { msg.textContent = 'El código tiene 6 caracteres (números y letras A–F).'; return; }
+  msg.textContent = 'Vinculando…';
+  const r = await post('/codigo', {codigo: c});
+  if (r.ok) campoCodigo.value = '';
+  refrescar();
+};
+document.getElementById('btnVincular').addEventListener('click', enviarCodigo);
+campoCodigo.addEventListener('keydown', e => { if (e.key === 'Enter') enviarCodigo(); });
+document.getElementById('btnCancelarCodigo').addEventListener('click', () => post('/cancelarCodigo').then(refrescar));
+
+let tvsPintadas = '', codigoVisible = false;
+function pintarTvs(s) {
+  document.getElementById('nombreTv').textContent = s.nombreTv || 'Elige una TV';
+  const atv = s.tipo === 'atv';
+  document.getElementById('tituloTeclado').textContent = atv ? '⌨ Escribir en la TV' : '⌨ Escribir en YouTube';
+  document.getElementById('notaTeclado').innerHTML = atv
+    ? 'Toca un campo de texto en la TV (buscador, contraseña…) y escribe aquí. Funciona en cualquier app.'
+    : 'Abre la búsqueda (🔍) de YouTube y deja el cursor en la <b>A</b>. Escribe letras, ñ y espacios (sin números por ahora).';
+  const bb = document.getElementById('btnBuscarTvs');
+  bb.disabled = s.buscando; bb.textContent = s.buscando ? 'Buscando…' : '🔍 Buscar TVs en mi WiFi';
+  document.getElementById('msgTvs').textContent = s.mensajeBusqueda || '';
+  panelCodigo.hidden = !s.pedirCodigo;
+  if (s.pedirCodigo && !codigoVisible) setTimeout(() => campoCodigo.focus(), 100);
+  codigoVisible = s.pedirCodigo;
+  if (s.pedirCodigo) document.getElementById('msgCodigo').textContent = /Escribe el código/.test(s.mensaje) ? '' : (s.mensaje || '');
+  const clave = JSON.stringify(s.tvs) + s.ip;
+  if (clave === tvsPintadas) return;
+  tvsPintadas = clave;
+  const lista = document.getElementById('listaTvs');
+  lista.innerHTML = '';
+  s.tvs.forEach(t => {
+    const fila = document.createElement('div'); fila.className = 'tv-fila';
+    const b = document.createElement('button');
+    b.className = 'elegir' + (t.ip === s.ip ? ' actual' : '');
+    b.innerHTML = '<span></span><small></small>';
+    b.firstChild.textContent = (t.ip === s.ip ? '✓ ' : '') + t.nombre;
+    b.lastChild.textContent = t.ip + ' · ' + (t.tipo === 'atv' ? 'Android TV (pide código la 1ª vez)' : 'Hisense VIDAA');
+    b.onclick = () => { post('/elegir', {ip: t.ip}).then(refrescar); abrirPanel(false); };
+    const ren = document.createElement('button'); ren.className = 'mini'; ren.textContent = '✎'; ren.setAttribute('aria-label', 'Cambiar nombre');
+    ren.onclick = () => { const n = prompt('Nombre para esta TV', t.nombre); if (n && n.trim()) post('/renombrar', {ip: t.ip, nombre: n.trim()}).then(() => { tvsPintadas = ''; refrescar(); }); };
+    fila.append(b, ren);
+    lista.appendChild(fila);
+  });
+}
+
 let fuentesPintadas = '';
 async function refrescar() {
   try {
     const s = await fetch('/estado').then(r => r.json());
     document.getElementById('estado').innerHTML = s.conectado
       ? 'Conectada' + (s.fuente ? ' · <b>' + s.fuente + '</b>' : '')
-      : 'TV apagada o sin red';
+      : (s.pedirCodigo ? 'Falta vincular' : (s.mensaje || 'TV apagada o sin red'));
+    pintarTvs(s);
     document.getElementById('progreso').innerHTML = s.escribiendo
       ? 'Escribiendo en la TV… ' + Math.round(100 * s.escritoHecho / Math.max(1, s.escritoTotal)) + '% · <b>tocar para detener</b>'
       : '';

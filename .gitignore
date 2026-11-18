@@ -11,3 +11,7 @@ android/build/
 # Python
 __pycache__/
 *.pyc
+
+# Identidad del control para Android TV (clave privada)
+atv_cert.pem
+atv_key.pem

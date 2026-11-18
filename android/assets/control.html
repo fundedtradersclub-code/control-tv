@@ -37,6 +37,12 @@
   .tv-actual { min-height:44px; padding:0 14px; display:flex; align-items:center; gap:6px; background:var(--btn); }
   .tv-actual .flecha { color:var(--sub); font-size:12px; transition:transform .2s; }
   .tv-actual[aria-expanded="true"] .flecha { transform:rotate(180deg); }
+  .panel-codigo { background:#1d2433; border:1px solid #3d7cf5; border-radius:16px; padding:14px; display:grid; gap:10px; }
+  .panel-codigo[hidden] { display:none; }
+  #campoCodigo { width:100%; min-height:56px; border-radius:14px; border:1px solid #3a3f4b; background:#16181d; color:var(--txt);
+                 font:700 26px/1 ui-monospace, monospace; letter-spacing:.3em; text-align:center; text-transform:uppercase;
+                 -webkit-user-select:text; user-select:text; }
+  .tipo-tv { font-size:11px; color:var(--sub); font-weight:400; }
   .panel-tvs { background:#1e2128; border-radius:16px; padding:14px; display:grid; gap:10px; }
   .panel-tvs[hidden] { display:none; }
   .tv-fila { display:grid; grid-template-columns:1fr auto auto; gap:8px; align-items:center; }
@@ -95,6 +101,18 @@
     </button>
     <span id="estado">Conectando…</span>
   </header>
+
+  <section id="panelCodigo" class="panel-codigo" hidden>
+    <div class="titulo">🔗 Vincular esta TV</div>
+    <div class="nota">En la pantalla de la TV apareció un código de 6 caracteres. Escríbelo aquí:</div>
+    <input id="campoCodigo" type="text" maxlength="6" autocomplete="off" autocapitalize="characters"
+           placeholder="Ej. A1B2C3" spellcheck="false">
+    <div class="pares">
+      <button id="btnCancelarCodigo">Cancelar</button>
+      <button id="btnVincular" class="acc">Vincular</button>
+    </div>
+    <div id="msgCodigo" class="nota aviso-escritura"></div>
+  </section>
 
   <section id="panelTvs" class="panel-tvs" hidden>
     <div class="titulo">Elige qué TV controlar</div>
@@ -158,7 +176,7 @@
   </div>
 
   <section id="teclado">
-    <div class="titulo">⌨ Escribir en YouTube</div>
+    <div class="titulo" id="tituloTeclado">⌨ Escribir en YouTube</div>
     <input id="texto" type="text" placeholder="Qué quieres buscar…" autocomplete="off" enterkeyhint="search">
     <div class="fila" style="margin-top:8px">
       <button id="btnEscribir">Escribir</button>
@@ -170,7 +188,7 @@
       <button id="btnDetener" class="rojo">Detener</button>
     </div>
     <div id="msgEscritura" class="nota aviso-escritura"></div>
-    <div class="nota">Abre la búsqueda (🔍) de YouTube y deja el cursor en la <b>A</b>. Escribe letras, ñ y espacios (sin números por ahora).</div>
+    <div class="nota" id="notaTeclado">Abre la búsqueda (🔍) de YouTube y deja el cursor en la <b>A</b>. Escribe letras, ñ y espacios (sin números por ahora).</div>
   </section>
 
   <section>
@@ -301,6 +319,26 @@ window.alVoz = textos => {
 };
 window.ordenDeVoz = ordenDeVoz;  // para pruebas
 
+// ---- Vinculacion con codigo (Android TV) ----
+const panelCodigo = document.getElementById('panelCodigo'), campoCodigo = document.getElementById('campoCodigo');
+const enviarCodigo = () => {
+  const c = campoCodigo.value.trim().toUpperCase();
+  if (!/^[0-9A-F]{6}$/.test(c)) { document.getElementById('msgCodigo').textContent = 'El código tiene 6 caracteres (números y letras A–F).'; return; }
+  vibrar(); document.getElementById('msgCodigo').textContent = 'Vinculando…';
+  tv.codigo(c);
+};
+document.getElementById('btnVincular').addEventListener('click', enviarCodigo);
+campoCodigo.addEventListener('keydown', e => { if (e.key === 'Enter') enviarCodigo(); });
+document.getElementById('btnCancelarCodigo').addEventListener('click', () => { tv.cancelarCodigo(); campoCodigo.value = ''; });
+let codigoVisible = false;
+function pintarCodigo(s) {
+  panelCodigo.hidden = !s.pedirCodigo;
+  if (s.pedirCodigo && !codigoVisible) { campoCodigo.value = ''; setTimeout(() => campoCodigo.focus(), 100); }
+  if (!s.pedirCodigo) campoCodigo.value = '';
+  codigoVisible = s.pedirCodigo;
+  if (s.pedirCodigo) document.getElementById('msgCodigo').textContent = /código|Código|vincul/i.test(s.mensaje) && !/Escribe el código/.test(s.mensaje) ? s.mensaje : '';
+}
+
 // ---- Varias TVs ----
 const panel = document.getElementById('panelTvs'), btnTv = document.getElementById('btnTv');
 const abrirPanel = abrir => { panel.hidden = !abrir; btnTv.setAttribute('aria-expanded', abrir); };
@@ -326,7 +364,7 @@ function pintarTvs(s) {
     b.className = 'elegir' + (t.ip === s.ip ? ' actual' : '');
     b.innerHTML = '<span></span><small></small>';
     b.firstChild.textContent = (t.ip === s.ip ? '✓ ' : '') + t.nombre;
-    b.lastChild.textContent = t.ip;
+    b.lastChild.textContent = t.ip + ' · ' + (t.tipo === 'atv' ? 'Android TV (pide código la 1ª vez)' : 'Hisense VIDAA');
     b.onclick = () => { vibrar(); tv.elegir(t.ip); abrirPanel(false); };
     const ren = document.createElement('button'); ren.className = 'mini'; ren.textContent = '✎'; ren.setAttribute('aria-label', 'Cambiar nombre');
     ren.onclick = () => { const n = prompt('Nombre para esta TV', t.nombre); if (n && n.trim()) { tv.renombrar(t.ip, n.trim()); tvsPintadas = ''; refrescar(); } };
@@ -432,6 +470,13 @@ function refrescar() {
   document.getElementById('btnBuscar').disabled = s.buscando;
   document.getElementById('pie').textContent = s.ip ? 'TV: ' + s.ip : '';
   pintarTvs(s);
+  pintarCodigo(s);
+  // En Android TV el texto va directo: sirve en cualquier app, sin recorrer letras
+  const atv = s.tipo === 'atv';
+  document.getElementById('tituloTeclado').textContent = atv ? '⌨ Escribir en la TV' : '⌨ Escribir en YouTube';
+  document.getElementById('notaTeclado').innerHTML = atv
+    ? 'Toca un campo de texto en la TV (buscador, contraseña…) y escribe aquí. Funciona en cualquier app.'
+    : 'Abre la búsqueda (🔍) de YouTube y deja el cursor en la <b>A</b>. Escribe letras, ñ y espacios (sin números por ahora).';
   document.getElementById('escribiendoFila').hidden = !s.escribiendo;
   document.getElementById('progreso').textContent = s.escribiendo
     ? 'Escribiendo en la TV… ' + Math.round(100 * s.escritoHecho / Math.max(1, s.escritoTotal)) + '%' : '';

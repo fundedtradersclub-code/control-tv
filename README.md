@@ -11,11 +11,16 @@ celular, ábrelo y permite "instalar apps desconocidas". Si aparece Play Protect
 
 ## Qué es
 
-Control remoto casero para TV Hisense con sistema **VIDAA** (probado en una Riviera
-RLED-DSU55HIK6155, fabricada por Hisense). Funciona por WiFi, sin el control original.
+Control remoto casero por WiFi, sin el control original. Funciona con dos tipos de TV:
 
-Usa el servicio de control remoto que la TV abre en el puerto **36669** (MQTT), el mismo
-que usa la app oficial de Hisense.
+| Tipo de TV | Probado en | Cómo se conecta |
+|---|---|---|
+| **Hisense VIDAA** | Riviera RLED-DSU55HIK6155 (fabricada por Hisense) | Servicio de control de la TV, puerto 36669 (MQTT) |
+| **Android TV / Google TV** | Riviera RLED-AND43HIKA32E (Hisense, Android TV) | Protocolo oficial "Android TV Remote v2", puertos 6466/6467, con **código de vinculación** |
+
+Con Android TV, la primera vez la TV muestra un código de 6 caracteres; lo escribes en el
+control y queda vinculado. Además el texto se envía **directo**: el teclado sirve en cualquier
+app (buscadores, contraseñas…), no solo en YouTube.
 
 ## Qué incluye
 
@@ -34,9 +39,10 @@ Las dos versiones **buscan la TV solas** en la red si cambia su dirección.
 | Botones y entradas | ✅ | ✅ |
 | **Flechas o joystick** (el joystick repite más rápido cuanto más lo arrastras; toque = OK) | ✅ | ✅ |
 | **Acceso rápido a Netflix y YouTube** | ✅ | ✅ |
-| Teclado para YouTube | ✅ | ✅ |
+| Teclado (VIDAA: en YouTube · Android TV: en cualquier app) | ✅ | ✅ |
 | **Mando por voz** | ✅ | — |
-| **Varias TVs** (buscar, elegir, renombrar) | ✅ | — |
+| **Varias TVs** (buscar, elegir, renombrar) | ✅ | ✅ |
+| **Android TV con código de vinculación** | ✅ | ✅ |
 
 ### 🎤 Mando por voz (Android)
 
@@ -80,7 +86,7 @@ Copia `config.example.json` a `config.json` y pon la IP y la MAC de tu TV.
 ## Versión web (PC)
 
 ```bash
-pip install paho-mqtt
+pip install paho-mqtt androidtvremote2
 python control_tv.py
 ```
 
